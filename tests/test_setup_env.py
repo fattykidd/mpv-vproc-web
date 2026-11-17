@@ -66,3 +66,12 @@ def test_no_display_is_a_problem(host):
     result = run(host)
     assert result.returncode == 1
     assert "no connected display" in result.stdout
+
+
+def test_outdated_firmware_is_a_problem(host):
+    updater = host / "bin" / "BlackmagicFirmwareUpdater"
+    updater.write_text('#!/bin/sh\necho "0:\t/dev/blackmagic/io0 [DeckLink Quad HDMI Recorder]\t0x121\tPLEASE_UPDATE"\n')
+    updater.chmod(0o755)
+    result = run(host)
+    assert result.returncode == 1
+    assert "firmware needs updating" in result.stdout

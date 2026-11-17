@@ -103,6 +103,15 @@ if [ -d /dev/blackmagic ]; then
 else
     fail "no /dev/blackmagic" "install Desktop Video and reboot (step 4)"
 fi
+if command -v BlackmagicFirmwareUpdater > /dev/null; then
+    firmware=$(BlackmagicFirmwareUpdater status 2>/dev/null || true)
+    if grep -q PLEASE_UPDATE <<< "$firmware"; then
+        fail "the card's firmware needs updating; until it is, no program can use the card" \
+             "sudo BlackmagicFirmwareUpdater update 0, then power off completely and unplug for 10 s (step 4)"
+    elif [ -n "$firmware" ]; then
+        ok "card firmware is up to date"
+    fi
+fi
 lib=$(ldconfig -p 2>/dev/null | awk '/libDeckLinkAPI\.so / { print $NF; exit }')
 if [ -z "$lib" ]; then
     fail "libDeckLinkAPI.so not found" "install Desktop Video (step 4)"

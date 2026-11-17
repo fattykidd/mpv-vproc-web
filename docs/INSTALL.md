@@ -199,19 +199,38 @@ ldconfig -p | grep libDeckLinkAPI
 - The second shows where the capture library is. **Note the path**: on Ubuntu/Debian it's usually
   `/usr/lib/libDeckLinkAPI.so`, on Fedora/RHEL `/lib64/libDeckLinkAPI.so`. You'll need it in step 8.
 
-Desktop Video also installs a firmware tool. If your card's firmware is out of date, the card may not work
-properly until it's updated:
+### Update the card's firmware
+
+The firmware is the software that runs on the card itself. Each Desktop Video version expects a particular one,
+and **a card that is new to this computer usually needs updating**. Until it is, the driver won't let any program
+use the card: mpv-vproc-web will only say `no DeckLink devices found`, even though `ls /dev/blackmagic/` lists the
+inputs. Check it:
 ```sh
 BlackmagicFirmwareUpdater status
 ```
-If it reports that an update is available, run the update it suggests, then power the computer off completely
-and on again.
+Each input gets a line ending in `OK` or `PLEASE_UPDATE`. If any says `PLEASE_UPDATE`:
+1. Update the card (it takes a minute or two; don't interrupt it):
+   ```sh
+   sudo BlackmagicFirmwareUpdater update 0
+   ```
+   On cards with several inputs, such as the Quad HDMI Recorder, this updates the whole card. Run `status`
+   again, and if any line still says `PLEASE_UPDATE`, update that number too.
+2. The new firmware only loads once the card has been without power, so a reboot isn't enough. Turn the
+   computer off, unplug it for about 10 seconds, and start it again:
+   ```sh
+   sudo poweroff
+   ```
+3. `BlackmagicFirmwareUpdater status` should now say `OK` everywhere.
+
+Do this again after updating Desktop Video: a newer driver can expect newer firmware. (`sudo dmesg | grep -i
+blackmagic` shows a `firmware version mismatch` warning when it does.)
 
 ### Choose the card's input
 
 Some cards have more than one kind of input. The DeckLink Mini Recorder 4K, for example, has both SDI and HDMI,
 and it has to be told to use **HDMI**, otherwise it reports no signal even with a source connected. Cards with
-only HDMI inputs, such as the DeckLink Quad HDMI Recorder, have nothing to choose, so you can skip this.
+only HDMI inputs, such as the DeckLink Quad HDMI Recorder, have nothing to choose and work straight away, so
+you can skip this.
 
 The input is chosen in Blackmagic's **Desktop Video Setup** app. Blackmagic doesn't make a text (terminal) version
 of it: it's a graphical app, so on a server without a desktop you have two ways to reach it. You only need to do
@@ -254,8 +273,14 @@ In the app:
 With a source connected and playing, the home page shows the detected format under the input icon, for example
 `2160p23.98`. That's a good sign everything up to the card works.
 
-The **DeckLink Quad HDMI Recorder** shows up as four separate cards (one per input). mpv-vproc-web uses the first
-by default; to use another, set `VPROC_DEVICE` in step 8. The doctor (step 9) lists them all with their numbers.
+The **DeckLink Quad HDMI Recorder** shows up as four separate cards, one per HDMI input, named
+`DeckLink Quad HDMI Recorder (1)` to `(4)`. mpv-vproc-web uses the first by default. The doctor (step 9) lists
+them all, each with an `id:`; to choose one, put its id in `.env`, for example:
+```sh
+VPROC_DEVICE=id:3255474416
+```
+The id stays the same even if the card moves to another slot or you add a second card, so it's safer than the
+device number.
 
 ---
 
@@ -488,7 +513,7 @@ What each check means, and what to do if it fails:
 | `Blackmagic device nodes present` | The container sees the capture card | Desktop Video not installed, or the computer wasn't rebooted after installing (step 4) |
 | `libDeckLinkAPI.so loads` | The capture library is available | `DECKLINK_LIB` in `.env` points to the wrong place (step 4 shows the right path) |
 | `Desktop Video driver` | Driver version, and the SDK version mpv-vproc-web was built with | The driver should be the **same or newer** than the SDK version shown |
-| `device N: …` | Each capture input found, with its ID | `no DeckLink devices found`: check `BlackmagicFirmwareUpdater status` on the host |
+| `device N: …` | Each capture input found, with its ID | `no DeckLink devices found`: the card's firmware needs updating ([step 4](#update-the-cards-firmware)), or the card was changed since the container was created (run `docker compose up -d --force-recreate`) |
 | `mpv …` | The video engine and its version | Shouldn't fail with the published image; report it if it does |
 | `/data is writable` | Presets can be saved | The `vproc-data` volume has the wrong owner; remove it with `docker compose down -v` and start again (this resets your presets) |
 
@@ -552,6 +577,17 @@ Your presets and settings are kept.
 
 To stay on a particular release instead, set `VPROC_VERSION=0.1.0` (for example) in `.env`. Releases are
 listed at https://github.com/fattykidd/mpv-vproc-web/releases.
+
+### After changing the capture card
+
+Docker gives the container the capture inputs that existed when it was created. After swapping, adding or
+removing a card, a restart isn't enough; recreate the container:
+```sh
+cd ~/mpv-vproc-web
+docker compose up -d --force-recreate
+```
+Check the card's firmware first ([step 4](#update-the-cards-firmware)), and if you set `VPROC_DEVICE`, update it to
+the new card's id from the doctor.
 
 ### Updating automatically with Watchtower
 
@@ -627,6 +663,7 @@ Start with the doctor (step 9). Beyond that, these are the problems seen so far:
 | Black screen, log says `no video output came up` | Something else is using the display (desktop, an old mpv service) or modesetting is off | Step 2 and step 3; `pgrep -a mpv` should print nothing outside the container |
 | Picture works but the log says `the display has no …@23.976 mode` | The display doesn't support that refresh rate | Normal for PC monitors; projectors and TVs usually do support it |
 | **NO SIGNAL** although the source is playing | The source uses HDCP copy protection (most streaming boxes, UHD Blu-ray players), or the card's input is set to SDI | HDCP isn't supported (see [step 1](#1-what-you-need)); try another source or turn HDCP off in the source's settings if it has that option. For the input, see [Choose the card's input](#choose-the-cards-input) |
+| `capture device not found` / `no DeckLink devices found` | Card firmware out of date, or the capture card was swapped or added | [Update the firmware](#update-the-cards-firmware); after changing cards, `docker compose up -d --force-recreate` |
 | `could not enable video input` | Another program has the capture card open (Media Express, OBS, another container) | Close it |
 | `Desktop Video driver not available` | The capture library path is wrong | `DECKLINK_LIB` in `.env` (step 4/8) |
 | HDR content shows as SDR | The source isn't sending HDR, or the card's firmware is old | Check the source's video settings; `BlackmagicFirmwareUpdater status` |
