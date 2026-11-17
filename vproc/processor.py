@@ -26,7 +26,7 @@ log = logging.getLogger("vproc.processor")
 
 OVERLAY_ID = 1
 OBSERVED = (
-    "video-params",
+    "video-out-params",
     "video-target-params",
     "display-fps",
     "estimated-vf-fps",
@@ -142,7 +142,7 @@ class Processor:
                 "dropped_frames": self._props.get("frame-drop-count"),
                 "decoder_dropped_frames": self._props.get("decoder-frame-drop-count"),
                 "delayed_frames": self._props.get("vo-delayed-frame-count"),
-                "video_params": self._props.get("video-params"),
+                "video_params": self._props.get("video-out-params"),
                 "target_params": self._props.get("video-target-params"),
             },
             "capture": {
