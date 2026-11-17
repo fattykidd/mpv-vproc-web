@@ -6,3 +6,4 @@
 tests
 capture/*.o
 capture/dlcap
+.decklink-sdk

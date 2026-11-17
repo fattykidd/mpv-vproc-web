@@ -1,0 +1,18 @@
+# Builds the image from source instead of downloading it. Use it together with
+# compose.yml:
+#   docker compose -f compose.yml -f compose.build.yml up -d --build
+#
+# Needs DECKLINK_SDK_INCLUDE in .env: the Linux/include folder of your own
+# download of the Blackmagic DeckLink SDK.
+
+services:
+  vproc:
+    image: vproc:local
+    build:
+      context: .
+      additional_contexts:
+        decklink_sdk: ${DECKLINK_SDK_INCLUDE:?set DECKLINK_SDK_INCLUDE in .env to the DeckLink SDK's Linux/include folder}
+      args:
+        FFMPEG_VERSION: ${FFMPEG_VERSION:-9.0.2}
+        LIBPLACEBO_VERSION: ${LIBPLACEBO_VERSION:-7.387.0}
+        MPV_VERSION: ${MPV_VERSION:-0.42.0}

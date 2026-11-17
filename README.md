@@ -29,25 +29,36 @@ You control it from a web page or its HTTP API.
    Don't run a desktop on the GPU that feeds the display; vproc needs to own that output.
 2. **[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/)** for Docker.
 3. **Blackmagic Desktop Video** (the driver). Check that the card appears: `ls /dev/blackmagic`.
-4. **DeckLink SDK** from Blackmagic's support site. Unpack it anywhere; the build only needs its
-   `Linux/include` folder, which is passed in as a separate build context. Nothing from Blackmagic is
-   committed to this repository or baked into an image you could publish. At runtime the container uses the
-   host's own `libDeckLinkAPI.so` through a read-only mount.
+   The container uses the host's own `libDeckLinkAPI.so` through a read-only mount.
 
 ## Run
 
 ```sh
-cp .env.example .env        # set DECKLINK_SDK_INCLUDE, VIDEO_GID, RENDER_GID, VPROC_OUTPUT_SIZE
-docker compose up -d --build
+cp .env.example .env        # set VIDEO_GID, RENDER_GID, VPROC_OUTPUT_SIZE (and DECKLINK_LIB if needed)
+docker compose pull
+docker compose up -d
 docker compose exec vproc python3 -m vproc.doctor
 ```
+
+This downloads the ready-built image from `ghcr.io/fattykidd/mpv-vproc-web`. To stay on a particular
+release instead of the newest, set `VPROC_VERSION` (for example `1.1.0`) in `.env`. To update later:
+`docker compose pull && docker compose up -d`.
 
 Then open `http://<host>:8000`. The container uses the host's network directly (so an Unfolded Circle
 Remote can find it); if port 8000 is taken on your server, set `VPROC_PORT` in `.env`.
 
+### Building the image yourself
+
+Building needs your own download of the DeckLink SDK from Blackmagic's developer site: set
+`DECKLINK_SDK_INCLUDE` in `.env` to its `Linux/include` folder, then add `compose.build.yml`:
+
+```sh
+docker compose -f compose.yml -f compose.build.yml up -d --build
+```
+
 The first build compiles FFmpeg, libplacebo and mpv from their pinned release tags (`FFMPEG_VERSION`,
-`LIBPLACEBO_VERSION`, `MPV_VERSION`), which takes a few minutes. To upgrade one, change its version in `.env`
-and rebuild.
+`LIBPLACEBO_VERSION`, `MPV_VERSION`), which takes a while. To upgrade one, change its version in `.env` and
+rebuild.
 
 `vproc.doctor` checks everything the container depends on: GPU and DRM access, the NVIDIA GBM/Vulkan
 pieces, connected displays and their modes, the DeckLink library, devices and driver version, and the mpv

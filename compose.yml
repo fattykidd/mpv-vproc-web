@@ -1,19 +1,14 @@
-# vproc: copy .env.example to .env, fill in the first section, then
-#   docker compose up -d --build
+# mpv-vproc-web: copy .env.example to .env, fill in the first section, then
+#   docker compose pull
+#   docker compose up -d
 #   docker compose exec vproc python3 -m vproc.doctor   # if anything is off
+#
+# This uses the published image. To build it yourself instead (needs the
+# DeckLink SDK headers), add compose.build.yml; see the README.
 
 services:
   vproc:
-    build:
-      context: .
-      additional_contexts:
-        # Your copy of the Blackmagic DeckLink SDK headers; never committed or published.
-        decklink_sdk: ${DECKLINK_SDK_INCLUDE:?set DECKLINK_SDK_INCLUDE in .env to the DeckLink SDK's Linux/include folder}
-      args:
-        FFMPEG_VERSION: ${FFMPEG_VERSION:-9.0.2}
-        LIBPLACEBO_VERSION: ${LIBPLACEBO_VERSION:-7.387.0}
-        MPV_VERSION: ${MPV_VERSION:-0.42.0}
-    image: vproc:local
+    image: ghcr.io/fattykidd/mpv-vproc-web:${VPROC_VERSION:-latest}
     container_name: vproc
     init: true
     restart: unless-stopped
