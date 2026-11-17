@@ -47,11 +47,16 @@ def gpu_checks(config: Config) -> None:
         if modeset.exists() and modeset.read_text().strip() != "Y":
             check(FAIL, "nvidia-drm modesetting is off", "add nvidia-drm.modeset=1 to the host kernel command line")
         if config.gpu_context == "drm":
-            gbm = glob.glob("/usr/lib/*/gbm/nvidia-drm_gbm.so")
-            check(OK if gbm else FAIL, "NVIDIA GBM backend",
-                  "" if gbm else "update nvidia-container-toolkit, or try VPROC_GPU_API=vulkan VPROC_GPU_CONTEXT=displayvk")
+            gbm = glob.glob("/usr/lib/*/gbm/nvidia-drm_gbm.so") + glob.glob("/usr/lib64/gbm/nvidia-drm_gbm.so")
+            usable = any(Path(g).parent.as_posix() in os.environ.get("GBM_BACKENDS_PATH", "/usr/lib/x86_64-linux-gnu/gbm")
+                         for g in gbm)
+            check(OK if usable else FAIL, "NVIDIA GBM backend (only for VPROC_GPU_CONTEXT=drm)",
+                  "" if usable else (f"found in {Path(gbm[0]).parent}; set GBM_BACKENDS_PATH to that folder" if gbm
+                                     else "the container toolkit didn't provide it; use the default Vulkan output"))
         icd = glob.glob("/usr/share/vulkan/icd.d/nvidia*.json") + glob.glob("/etc/vulkan/icd.d/nvidia*.json")
-        check(OK if icd else WARN, "NVIDIA Vulkan ICD", "" if icd else "NVIDIA_DRIVER_CAPABILITIES must include graphics")
+        needed = config.gpu_api == "vulkan"
+        check(OK if icd else (FAIL if needed else WARN), "NVIDIA Vulkan ICD",
+              "" if icd else "NVIDIA_DRIVER_CAPABILITIES must include graphics")
     else:
         check(WARN, "no NVIDIA device nodes", "fine for AMD/Intel; for NVIDIA enable the GPU reservation in compose.yml")
 

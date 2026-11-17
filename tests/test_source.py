@@ -1,7 +1,7 @@
 import pytest
 
 from vproc.config import DEFAULT_REFRESH_MAP, Config, ConfigError
-from vproc.source import Colorimetry, Segment, UnsupportedSignal, describe, drm_mode_for, load_options, video_filter
+from vproc.source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
 
 
 def segment(**over):
@@ -78,16 +78,20 @@ def test_describe():
     assert describe(segment(field="tff", height=1080, fps_num=30000, fps_den=1001)).startswith("1080i59.94")
 
 
-def test_drm_mode_matching():
+def test_display_mode_matching():
     m = DEFAULT_REFRESH_MAP
-    assert drm_mode_for(segment(), "3840x2160", m, "preferred") == "3840x2160@23.976"
-    assert drm_mode_for(segment(fps_num=25, fps_den=1), "3840x2160", m, "preferred") == "3840x2160@50"
-    assert drm_mode_for(segment(field="tff", fps_num=30000, fps_den=1001), "1920x1080", m, "p") == "1920x1080@59.94"
-    assert drm_mode_for(segment(fps_num=48, fps_den=1), "3840x2160", m, "preferred") == "preferred"
-    assert drm_mode_for(segment(), "", m, "preferred") == "preferred"
+    assert display_mode_for(segment(), "3840x2160", m, "preferred") == "3840x2160@23.976"
+    assert display_mode_for(segment(fps_num=25, fps_den=1), "3840x2160", m, "preferred") == "3840x2160@50"
+    assert display_mode_for(segment(field="tff", fps_num=30000, fps_den=1001), "1920x1080", m, "p") == "1920x1080@59.94"
+    assert display_mode_for(segment(fps_num=48, fps_den=1), "3840x2160", m, "preferred") == "preferred"
+    assert display_mode_for(segment(), "", m, "preferred") == "preferred"
 
 
 def test_config_from_env():
+    assert Config.from_env({}).gpu_context == "displayvk"
+    assert Config.from_env({"VPROC_DRM_MODE": "1920x1080"}).display_mode == "1920x1080"  # older name
+    with pytest.raises(ConfigError):
+        Config.from_env({"VPROC_GPU_API": "opengl"})  # displayvk needs Vulkan
     c = Config.from_env({"VPROC_PORT": "9000", "VPROC_MATCH_REFRESH": "no", "VPROC_REFRESH_MAP": "24=48",
                          "VPROC_MPV_EXTRA_ARGS": "--foo=1 '--bar=a b'", "VPROC_OUTPUT_SIZE": "3840x2160"})
     assert c.port == 9000 and not c.match_refresh and c.refresh_map == {24.0: 48.0}

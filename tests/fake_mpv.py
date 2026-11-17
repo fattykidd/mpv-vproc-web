@@ -3,7 +3,9 @@
 the segment FIFOs, checking that every frame starts on a boundary.
 
 FAKE_MPV_LOG        append a JSON line per notable action to this file
-FAKE_MPV_BAD_MODES  comma-separated --drm-mode values that "fail" (no VO)
+FAKE_MPV_BAD_MODES  comma-separated modes that "fail" (no VO)
+FAKE_MPV_MODES      the display's modes for --vulkan-display-mode, as WxH@RATE,...
+FAKE_MPV_VO_DELAY   seconds before the video output comes up
 """
 
 import asyncio
@@ -22,6 +24,30 @@ def record(**entry):
     if LOG:
         with _log_lock, open(LOG, "a") as f:
             f.write(json.dumps(entry) + "\n")
+
+
+DEFAULT_MODES = "3840x2160@60,3840x2160@23.976,3840x2160@24,3840x2160@50,3840x2160@59.94,1920x1080@60"
+
+
+def display_modes():
+    return [m for m in os.environ.get("FAKE_MPV_MODES", DEFAULT_MODES).split(",") if m]
+
+
+def print_mode_list():
+    """Mimics `mpv --gpu-context=displayvk --vulkan-display-mode=help`."""
+    print("Display 0: FAKE-PROJECTOR")
+    print("    Modes:")
+    for i, mode in enumerate(display_modes()):
+        size, rate = mode.split("@")
+        print(f"      Mode {i:02d}: {size} ({float(rate):.3f} Hz)")
+    print("    Planes:\n      Plane: 0")
+
+
+def mode_label(opts):
+    if opts.get("gpu-context") == "displayvk":
+        index = opts.get("vulkan-display-mode")
+        return display_modes()[int(index)] if index is not None else "preferred"
+    return opts.get("drm-mode", "")
 
 
 def parse_args(argv):
@@ -164,8 +190,8 @@ class FakeMpv:
 
     async def main(self):
         self.loop = asyncio.get_running_loop()
-        mode = self.opts.get("drm-mode", "")
-        record(event="start", drm_mode=mode, options={k: v for k, v in self.opts.items() if k in {"target-peak", "scale"}})
+        mode = mode_label(self.opts)
+        record(event="start", mode=mode, options={k: v for k, v in self.opts.items() if k in {"target-peak", "scale"}})
         if mode in filter(None, os.environ.get("FAKE_MPV_BAD_MODES", "").split(",")):
             self.props["current-vo"] = None
         elif os.environ.get("FAKE_MPV_VO_DELAY"):
@@ -180,4 +206,8 @@ class FakeMpv:
 
 
 if __name__ == "__main__":
-    asyncio.run(FakeMpv(parse_args(sys.argv[1:])).main())
+    options = parse_args(sys.argv[1:])
+    if options.get("vulkan-display-mode") == "help":
+        print_mode_list()
+    else:
+        asyncio.run(FakeMpv(options).main())

@@ -52,7 +52,7 @@ def run(coro):
 
 
 def test_sdr_then_hdr_switches_mode_preset_and_tagging(tmp_path, monkeypatch):
-    h = Harness(tmp_path, "nosignal:20;1080p60:yuv10:sdr:150;2160p23976:yuv10:pq:100000:1000", monkeypatch)
+    h = Harness(tmp_path, "nosignal:500;1080p60:yuv10:sdr:150;2160p23976:yuv10:pq:100000:1000", monkeypatch)
 
     async def scenario():
         await h.processor.start()
@@ -61,12 +61,12 @@ def test_sdr_then_hdr_switches_mode_preset_and_tagging(tmp_path, monkeypatch):
 
             sdr = await h.until(lambda: [e for e in h.entries(event="loadfile") if "bt.709" in e["options"]["vf"]], what="SDR load")
             assert sdr[0]["options"]["demuxer-rawvideo-w"] == "1920"
-            assert h.entries(event="start")[-1]["drm_mode"] == "3840x2160@60"
+            assert h.entries(event="start")[-1]["mode"] == "3840x2160@60"
 
             hdr = await h.until(lambda: [e for e in h.entries(event="loadfile") if "gamma=pq" in e["options"]["vf"]], what="HDR load")
             assert "max-luma=1000" in hdr[0]["options"]["vf"]
             starts = h.entries(event="start")
-            assert starts[-1]["drm_mode"] == "3840x2160@23.976"
+            assert starts[-1]["mode"] == "3840x2160@23.976"
             assert len({s["pid"] for s in starts}) >= 2  # mpv restarted for the new refresh rate
 
             await h.until(lambda: h.entries(event="frames", path=hdr[0]["url"], frames=50), what="HDR frames")
@@ -83,15 +83,35 @@ def test_sdr_then_hdr_switches_mode_preset_and_tagging(tmp_path, monkeypatch):
     run(scenario())
 
 
-def test_unsupported_mode_falls_back(tmp_path, monkeypatch):
-    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch, bad_modes="3840x2160@23.976")
+def test_mode_the_display_lacks_falls_back(tmp_path, monkeypatch):
+    # Like a PC monitor: no 23.976 Hz mode in the list, so mpv isn't even tried in it.
+    monkeypatch.setenv("FAKE_MPV_MODES", "3840x2160@60,3840x2160@50,1920x1080@60")
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch)
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
+            status = h.processor.status()
+            assert status["output"]["unsupported_modes"] == ["3840x2160@23.976"]
+            assert any("has no 3840x2160@23.976 mode" in e["message"] for e in status["errors"])
+            assert [e["mode"] for e in h.entries(event="start")] == ["preferred"]
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_drm_mode_that_fails_falls_back(tmp_path, monkeypatch):
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch, bad_modes="3840x2160@23.976",
+                gpu_api="opengl", gpu_context="drm")
 
     async def scenario():
         await h.processor.start()
         try:
             await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
             assert h.processor.status()["output"]["unsupported_modes"] == ["3840x2160@23.976"]
-            assert h.entries(event="start")[-1]["drm_mode"] == "preferred"
+            assert h.entries(event="start")[-1]["mode"] == "preferred"
         finally:
             await h.processor.stop()
 
@@ -171,13 +191,14 @@ def test_mode_switch_waits_for_mpv_to_finish_starting(tmp_path, monkeypatch):
     # Real mpv needs a moment to bring up the display; a segment that arrives
     # meanwhile must not tear mpv down halfway through its start-up.
     monkeypatch.setenv("FAKE_MPV_VO_DELAY", "0.6")
+    monkeypatch.setenv("FAKE_MPV_MODES", "1920x1080@60,1920x1080@23.976")
     h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch, output_size_override="1920x1080")
 
     async def scenario():
         await h.processor.start()
         try:
             await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
-            modes = [e["drm_mode"] for e in h.entries(event="start")]
+            modes = [e["mode"] for e in h.entries(event="start")]
             assert modes == ["preferred", "1920x1080@23.976"]
             assert h.processor.status()["errors"] == []
         finally:

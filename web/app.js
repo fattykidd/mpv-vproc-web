@@ -130,7 +130,7 @@ function renderStatus(s) {
   const drops = (o.dropped_frames ?? 0) + (o.decoder_dropped_frames ?? 0);
   facts($("#output-facts"), [
     ["State", o.playing ? "Playing" : o.running ? "Ready" : "Stopped", !o.running],
-    o.drm_mode && ["Mode", o.drm_mode],
+    o.display_mode && ["Mode", o.display_mode],
     ["Refresh", o.display_fps ? `${fmt(o.display_fps)} Hz` : null],
     ["Rendering", o.estimated_fps ? `${fmt(o.estimated_fps, 2)} fps` : null],
     ["Target", target.primaries ? `${target.primaries} · ${target.gamma}${target["max-luma"] ? ` · ${fmt(target["max-luma"], 0)} nits` : ""}` : null],

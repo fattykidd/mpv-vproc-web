@@ -20,7 +20,8 @@ from .capture import CaptureProcess
 from .config import Config
 from .mpv import MpvError, MpvProcess, build_args
 from .settings import OPTIONS, PresetStore, Value
-from .source import Colorimetry, Segment, UnsupportedSignal, describe, drm_mode_for, load_options, video_filter
+from .displays import DisplayMode, find_mode, probe_vulkan_modes
+from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
 
 log = logging.getLogger("vproc.processor")
 
@@ -76,7 +77,8 @@ class Processor:
         self._capture_stats: dict[str, Any] = {}
 
         # Output state.
-        self._drm_mode = config.drm_mode
+        self._display_mode = config.display_mode
+        self._vulkan_modes: list[DisplayMode] = []
         self._bad_modes: set[str] = set()
         self._given_upto = 0  # highest segment id handed to an mpv reader
         self._loaded_segment: int | None = None
@@ -136,7 +138,7 @@ class Processor:
             "output": {
                 "running": mpv_up,
                 "playing": mpv_up and self._loaded_segment is not None,
-                "drm_mode": self._drm_mode if self.config.gpu_context == "drm" else None,
+                "display_mode": self._display_mode if self._switches_modes else None,
                 "unsupported_modes": sorted(self._bad_modes),
                 "display_fps": self._props.get("display-fps"),
                 "estimated_fps": self._props.get("estimated-vf-fps"),
@@ -223,25 +225,68 @@ class Processor:
             raise MpvError("the video output is not running")
         return self._mpv.client
 
+    @property
+    def _switches_modes(self) -> bool:
+        """Whether vproc picks the display mode (direct-to-display outputs only)."""
+        return self.config.gpu_context in {"displayvk", "drm"}
+
     def _desired_mode(self) -> str:
-        if self.config.gpu_context != "drm" or not self.config.match_refresh:
-            return self.config.drm_mode
+        if not (self._switches_modes and self.config.match_refresh):
+            return self.config.display_mode
         if not (self._signal and self._segment):
-            return self._drm_mode  # keep whatever is showing; avoid needless mode switches
-        mode = drm_mode_for(self._segment, self.config.output_size, self.config.refresh_map, self.config.drm_mode)
-        return self.config.drm_mode if mode in self._bad_modes else mode
+            return self._display_mode  # keep whatever is showing; avoid needless mode switches
+        mode = display_mode_for(self._segment, self.config.output_size, self.config.refresh_map, self.config.display_mode)
+        return self.config.display_mode if mode in self._bad_modes else mode
+
+    async def _vulkan_mode_index(self, mode: str) -> int | None:
+        """Index of a mode in the display's list; None means mpv's default.
+
+        Raises LookupError when the display doesn't offer the mode.
+        """
+        # Re-read the list on every start: the display may have been swapped.
+        self._vulkan_modes = await probe_vulkan_modes(self.config.mpv_bin, self.config.gpu_api, self.config.vulkan_display)
+        if mode == "preferred" or not self._vulkan_modes:
+            return None
+        found = find_mode(self._vulkan_modes, mode)
+        if found is None:
+            raise LookupError(mode)
+        return found.index
+
+    def _display_lacks(self, mode: str) -> bool:
+        """True when the last mode list shows the display can't do `mode`."""
+        return (
+            self.config.gpu_context == "displayvk"
+            and mode != "preferred"
+            and bool(self._vulkan_modes)
+            and find_mode(self._vulkan_modes, mode) is None
+        )
+
+    def _reject_mode(self, mode: str) -> None:
+        self._bad_modes.add(mode)
+        self._error("output", f"the display has no {mode} mode; using {self.config.display_mode} instead")
 
     async def _supervise_output(self) -> None:
         backoff = Backoff()
         while not self._stopping:
             mode = self._desired_mode()
+            vulkan_index = None
+            if self.config.gpu_context == "displayvk":
+                try:
+                    vulkan_index = await self._vulkan_mode_index(mode)
+                except LookupError:
+                    if mode != self.config.display_mode:
+                        self._reject_mode(mode)
+                        continue
+                    self._error("output", f"the display has no {mode} mode (VPROC_DISPLAY_MODE); using its default")
             self._mpv = MpvProcess(
                 build_args(
                     mpv_bin=self.config.mpv_bin,
                     socket_path=self.config.mpv_socket,
                     gpu_api=self.config.gpu_api,
                     gpu_context=self.config.gpu_context,
-                    drm_mode=mode,
+                    display_mode=mode,
+                    vulkan_display=self.config.vulkan_display,
+                    vulkan_mode_index=vulkan_index,
                     drm_format=self.config.drm_format,
                     drm_device=self.config.drm_device,
                     drm_connector=self.config.drm_connector,
@@ -262,15 +307,15 @@ class Processor:
                 await self._mpv.stop()
                 if self._stopping:
                     return
-                if mode != self.config.drm_mode:
+                if mode != self.config.display_mode:
                     self._bad_modes.add(mode)
-                    self._error("output", f"display mode {mode} failed; using {self.config.drm_mode} instead")
+                    self._error("output", f"display mode {mode} failed; using {self.config.display_mode} instead")
                     continue
                 self._error("output", f"mpv failed to start: {exc}")
                 await backoff.sleep()
                 continue
 
-            self._drm_mode = mode
+            self._display_mode = mode
             self._output_ready = True
             backoff.mark_started()
             self._notify()
@@ -291,8 +336,8 @@ class Processor:
 
     async def _prepare_mpv(self) -> None:
         client = self._mpv.client
-        if self.config.gpu_context == "drm":
-            # A failed --drm-mode leaves mpv idle without a video output.
+        if self._switches_modes:
+            # A display mode that won't come up leaves mpv idle without a video output.
             for _ in range(30):
                 if await client.get("current-vo"):
                     break
@@ -362,8 +407,10 @@ class Processor:
                 await self._set_overlay("No signal" if self._signal is False else "Waiting for input")
                 return
 
-            if self._desired_mode() != self._drm_mode:
-                log.info("switching display mode %s -> %s", self._drm_mode, self._desired_mode())
+            if self._display_lacks(self._desired_mode()):
+                self._reject_mode(self._desired_mode())  # no restart needed to find that out
+            if self._desired_mode() != self._display_mode:
+                log.info("switching display mode %s -> %s", self._display_mode, self._desired_mode())
                 self._restart_output = True
                 await self._mpv.stop()  # the output supervisor restarts mpv in the new mode
                 return

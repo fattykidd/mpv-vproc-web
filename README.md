@@ -2,11 +2,11 @@
 
 A headless HDR video processor built from a Blackmagic DeckLink capture card, mpv and libplacebo.
 It takes HDMI in, tone-maps HDR10/HLG in a style like madVR's (with dynamic per-frame peak detection), scales
-with libplacebo's high-quality filters and drives the display directly over KMS. No desktop is needed.
+with libplacebo's high-quality filters and drives the display directly through Vulkan. No desktop is needed.
 You control it from a web page or its HTTP API.
 
 ```
- source ─HDMI─▶ DeckLink ──▶ dlcap ──FIFO──▶ mpv (gpu-next / libplacebo) ──KMS──▶ HDMI ─▶ projector
+ source ─HDMI─▶ DeckLink ──▶ dlcap ──FIFO──▶ mpv (gpu-next / libplacebo) ──Vulkan──▶ HDMI ─▶ projector
                                 │                     ▲
                                 └── JSON events ──▶ vproc (Python) ──JSON IPC┘
                                                        ▲
@@ -69,7 +69,8 @@ else. *Visualize curve* draws the tone curve and the measured peak over the pict
 
 **Refresh-rate matching.** With `VPROC_OUTPUT_SIZE` set, the display mode follows the source: 23.976 → 23.976 Hz,
 25 → 50 Hz, and so on (`VPROC_REFRESH_MAP`). If the display rejects a mode, vproc falls back to
-`VPROC_DRM_MODE`, remembers the failure and reports it in the UI. Changing modes restarts mpv, which takes
+`VPROC_DISPLAY_MODE`, remembers that and reports it in the UI. vproc reads the display's mode list, so a
+mode the display doesn't offer (PC monitors rarely do 23.976 Hz) is skipped without a restart. Changing modes restarts mpv, which takes
 about a second of black.
 
 **Inputs.** 8-, 10- and 12-bit YCbCr 4:2:2 and RGB 4:4:4 are supported, progressive and interlaced (bwdif
@@ -109,16 +110,17 @@ likely to touch:
 |---|---|---|
 | `VPROC_OUTPUT_SIZE` | – | Display resolution; enables refresh-rate matching |
 | `VPROC_DEVICE` | `0` | Which DeckLink input |
-| `VPROC_DRM_CONNECTOR` | first connected | e.g. `HDMI-A-1` |
-| `VPROC_GPU_API` / `VPROC_GPU_CONTEXT` | `opengl` / `drm` | `vulkan` / `displayvk` as an alternative on NVIDIA |
-| `VPROC_DRM_FORMAT` | `xrgb8888` | `xrgb2101010` for a 10-bit output path |
+| `VPROC_DISPLAY_MODE` | `preferred` | Mode used when refresh matching doesn't apply |
+| `VPROC_VULKAN_DISPLAY` | `0` | Which display, if the GPU has several connected |
+| `VPROC_GPU_API` / `VPROC_GPU_CONTEXT` | `vulkan` / `displayvk` | `opengl` / `drm` as an alternative |
 | `VPROC_API_TOKEN` | – | Protects the API |
 
 ## Troubleshooting
 
-* **Black screen; the log shows "no video output came up"**: run the doctor. On NVIDIA, the usual causes
-  are `nvidia-drm.modeset=1` missing on the host, or the container toolkit not injecting
-  `nvidia-drm_gbm.so`. Try `VPROC_GPU_API=vulkan` with `VPROC_GPU_CONTEXT=displayvk`.
+* **Black screen; the log shows "no video output came up"**: run the doctor. On NVIDIA, check that
+  `nvidia-drm.modeset=1` is set on the host and that nothing else (a desktop, another mpv) holds the
+  display. To see the modes the display offers, stop vproc and run
+  `docker compose run --rm --entrypoint mpv vproc --no-config --vo=gpu-next --gpu-api=vulkan --gpu-context=displayvk --vulkan-display-mode=help`.
 * **"Desktop Video driver not available"**: `DECKLINK_LIB` doesn't point at the host's `libDeckLinkAPI.so`,
   or the driver isn't loaded (`lsmod | grep blackmagic`).
 * **"could not enable video input"**: another program (Media Express, OBS, a second container) has the input open.

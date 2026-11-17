@@ -147,8 +147,10 @@ def build_args(
     socket_path: Path,
     gpu_api: str,
     gpu_context: str,
-    drm_mode: str,
-    drm_format: str,
+    display_mode: str = "preferred",
+    vulkan_display: int = 0,
+    vulkan_mode_index: int | None = None,
+    drm_format: str = "xrgb8888",
     drm_device: str = "",
     drm_connector: str = "",
     log_level: str = "warn",
@@ -177,14 +179,21 @@ def build_args(
         "--demuxer-readahead-secs=0",
         "--video-latency-hacks=yes",
         "--interpolation=no",
+        # vproc tone-maps for the display itself, so mpv must not switch the
+        # output to HDR or describe the picture to the display on its own.
+        "--target-colorspace-hint=no",
         "--osd-level=1",
         "--osd-duration=2500",
         "--terminal=yes",
         "--msg-color=no",
         f"--msg-level=all={log_level}",
     ]
-    if gpu_context == "drm":
-        args += [f"--drm-mode={drm_mode}", f"--drm-format={drm_format}"]
+    if gpu_context == "displayvk":
+        args.append(f"--vulkan-display-display={vulkan_display}")
+        if vulkan_mode_index is not None:
+            args.append(f"--vulkan-display-mode={vulkan_mode_index}")
+    elif gpu_context == "drm":
+        args += [f"--drm-mode={display_mode}", f"--drm-format={drm_format}"]
         if drm_device:
             args.append(f"--drm-device={drm_device}")
         if drm_connector:

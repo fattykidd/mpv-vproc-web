@@ -71,13 +71,14 @@ class Config:
     device: str = "0"
     queue_depth: int = 2
 
-    # Output (mpv)
+    # Output (mpv). Vulkan direct display by default; OpenGL over DRM/GBM is the alternative.
     mpv_bin: str = "mpv"
-    gpu_api: str = "opengl"
-    gpu_context: str = "drm"
+    gpu_api: str = "vulkan"
+    gpu_context: str = "displayvk"
+    display_mode: str = "preferred"  # "preferred", WIDTHxHEIGHT or WIDTHxHEIGHT@RATE
+    vulkan_display: int = 0
     drm_device: str = ""
     drm_connector: str = ""
-    drm_mode: str = "preferred"
     drm_format: str = "xrgb8888"
     output_size: str = ""  # e.g. 3840x2160; required for refresh-rate matching
     match_refresh: bool = True
@@ -107,8 +108,8 @@ class Config:
         strings = {
             "HOST": "host", "API_TOKEN": "api_token", "DLCAP_BIN": "dlcap_bin", "DEVICE": "device",
             "MPV_BIN": "mpv_bin", "GPU_API": "gpu_api", "GPU_CONTEXT": "gpu_context",
-            "DRM_DEVICE": "drm_device", "DRM_CONNECTOR": "drm_connector", "DRM_MODE": "drm_mode",
-            "DRM_FORMAT": "drm_format", "OUTPUT_SIZE": "output_size", "RGB_RANGE": "rgb_range",
+            "DRM_DEVICE": "drm_device", "DRM_CONNECTOR": "drm_connector", "DRM_FORMAT": "drm_format",
+            "OUTPUT_SIZE": "output_size", "RGB_RANGE": "rgb_range",
             "MPV_LOG_LEVEL": "mpv_log_level", "LOG_LEVEL": "log_level",
         }
         for key, attr in strings.items():
@@ -117,7 +118,10 @@ class Config:
         for key, attr in {"DATA_DIR": "data_dir", "RUN_DIR": "run_dir", "WEB_DIR": "web_dir"}.items():
             if (v := get(key)) is not None:
                 kw[attr] = Path(v)
-        for key, attr in {"PORT": "port", "QUEUE_DEPTH": "queue_depth"}.items():
+        # VPROC_DRM_MODE is the older name for VPROC_DISPLAY_MODE.
+        if (v := get("DISPLAY_MODE") or get("DRM_MODE")) is not None:
+            kw["display_mode"] = v.strip()
+        for key, attr in {"PORT": "port", "QUEUE_DEPTH": "queue_depth", "VULKAN_DISPLAY": "vulkan_display"}.items():
             if (v := get(key)) is not None:
                 kw[attr] = _int(v, f"VPROC_{key}")
         if (v := get("MATCH_REFRESH")) is not None:
@@ -136,6 +140,8 @@ class Config:
             raise ConfigError("VPROC_RGB_RANGE must be full or limited")
         if self.output_size and not _is_size(self.output_size):
             raise ConfigError("VPROC_OUTPUT_SIZE must look like 3840x2160")
+        if self.gpu_context == "displayvk" and self.gpu_api != "vulkan":
+            raise ConfigError("VPROC_GPU_CONTEXT=displayvk needs VPROC_GPU_API=vulkan")
         if not 1 <= self.queue_depth <= 16:
             raise ConfigError("VPROC_QUEUE_DEPTH must be between 1 and 16")
 

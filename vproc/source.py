@@ -244,8 +244,8 @@ def refresh_for(rate: float, refresh_map: dict[float, float]) -> float | None:
     return None
 
 
-def drm_mode_for(segment: Segment | None, output_size: str, refresh_map: dict[float, float], fallback: str) -> str:
-    """mpv --drm-mode value that matches the display refresh to the content."""
+def display_mode_for(segment: Segment | None, output_size: str, refresh_map: dict[float, float], fallback: str) -> str:
+    """Display mode ("WIDTHxHEIGHT@RATE") whose refresh rate suits the content."""
     if segment is None or not output_size:
         return fallback
     rate = refresh_for(segment.output_rate, refresh_map)
