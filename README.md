@@ -41,7 +41,7 @@ docker compose exec vproc python3 -m vproc.doctor
 ```
 
 This downloads the ready-built image from `ghcr.io/fattykidd/mpv-vproc-web`. To stay on a particular
-release instead of the newest, set `VPROC_VERSION` (for example `1.1.0`) in `.env`. To update later:
+release instead of the newest, set `VPROC_VERSION` (for example `0.1.0`) in `.env`. To update later:
 `docker compose pull && docker compose up -d`.
 
 Then open `http://<host>:8000`. The container uses the host's network directly (so an Unfolded Circle
