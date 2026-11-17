@@ -6,11 +6,11 @@
 #include <cstdint>
 #include <cstring>
 
+// Like the real SDK, this header does not define the version macros; they live
+// in DeckLinkAPIVersion.h. MOCK_DECKLINK_API_VERSION selects the frame API.
 #ifndef MOCK_DECKLINK_API_VERSION
 #define MOCK_DECKLINK_API_VERSION 0x0e020100
 #endif
-#define BLACKMAGIC_DECKLINK_API_VERSION MOCK_DECKLINK_API_VERSION
-#define BLACKMAGIC_DECKLINK_API_VERSION_STRING "mock"
 
 #define STDMETHODCALLTYPE
 typedef int32_t HRESULT;
@@ -149,7 +149,7 @@ public:
     virtual long GetRowBytes() = 0;
     virtual BMDPixelFormat GetPixelFormat() = 0;
     virtual BMDFrameFlags GetFlags() = 0;
-#if BLACKMAGIC_DECKLINK_API_VERSION < 0x0e030000
+#if MOCK_DECKLINK_API_VERSION < 0x0e030000
     virtual HRESULT GetBytes(void** buffer) = 0;
 #endif
 };

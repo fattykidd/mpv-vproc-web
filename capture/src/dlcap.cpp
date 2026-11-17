@@ -20,6 +20,7 @@
  */
 
 #include "DeckLinkAPI.h"
+#include "DeckLinkAPIVersion.h"
 
 #include <algorithm>
 #include <atomic>

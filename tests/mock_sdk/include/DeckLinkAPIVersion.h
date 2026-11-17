@@ -1,0 +1,9 @@
+// Version macros for the mock SDK (see DeckLinkAPI.h).
+#pragma once
+
+#ifndef MOCK_DECKLINK_API_VERSION
+#define MOCK_DECKLINK_API_VERSION 0x0e020100
+#endif
+
+#define BLACKMAGIC_DECKLINK_API_VERSION MOCK_DECKLINK_API_VERSION
+#define BLACKMAGIC_DECKLINK_API_VERSION_STRING "mock"

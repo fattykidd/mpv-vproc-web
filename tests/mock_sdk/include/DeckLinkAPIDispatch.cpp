@@ -190,7 +190,7 @@ public:
     long GetRowBytes() override { return row_bytes_for(pf_, w_); }
     BMDPixelFormat GetPixelFormat() override { return pf_; }
     BMDFrameFlags GetFlags() override { return flags_; }
-#if BLACKMAGIC_DECKLINK_API_VERSION < 0x0e030000
+#if MOCK_DECKLINK_API_VERSION < 0x0e030000
     HRESULT GetBytes(void** b) override { *b = bytes_.data(); return S_OK; }
 #endif
 

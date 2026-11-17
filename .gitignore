@@ -7,4 +7,4 @@ capture/*.o
 capture/dlcap
 # Blackmagic SDK files are licensed separately; keep them out of the repo.
 DeckLinkAPI*.h
-!tests/mock_sdk/include/DeckLinkAPI.h
+!tests/mock_sdk/include/DeckLinkAPI*.h
