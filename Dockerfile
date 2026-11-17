@@ -50,6 +50,10 @@ RUN git clone --depth 1 --recurse-submodules --shallow-submodules --branch "v${L
         -Dlibdovi=disabled -Ddemos=false -Dtests=false \
     && ninja -C libplacebo/build install
 
+# mpv's DRM output reads the display's EDID through libdisplay-info.
+RUN apt-get update && apt-get install -y --no-install-recommends libdisplay-info-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN git clone --depth 1 --branch "v${MPV_VERSION}" https://github.com/mpv-player/mpv.git mpv \
     && meson setup mpv/build mpv \
         --prefix="${PREFIX}" --libdir=lib --buildtype=release \
@@ -93,7 +97,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         libvulkan1 libshaderc1 liblcms2-2 libxxhash0 \
         libass9 libfreetype6 libfribidi0 libharfbuzz0b fonts-dejavu-core \
-        libdrm2 libgbm1 libegl1 libgl1 libglx0 liblua5.2-0 zlib1g \
+        libdrm2 libdisplay-info2 libgbm1 libegl1 libgl1 libglx0 liblua5.2-0 zlib1g \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=media-build ${PREFIX} ${PREFIX}
