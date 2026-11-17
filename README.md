@@ -41,7 +41,7 @@ The short version for experienced users; [docs/INSTALL.md](docs/INSTALL.md) has 
 ## Run
 
 ```sh
-cp .env.example .env        # set VIDEO_GID, RENDER_GID, VPROC_OUTPUT_SIZE (and DECKLINK_LIB if needed)
+bash scripts/setup-env.sh   # writes .env: VIDEO_GID, RENDER_GID, VPROC_OUTPUT_SIZE, DECKLINK_LIB
 docker compose pull
 docker compose up -d
 docker compose exec vproc python3 -m vproc.doctor

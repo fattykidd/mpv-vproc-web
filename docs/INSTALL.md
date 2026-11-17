@@ -40,6 +40,12 @@ Once it's running, read **[SETTINGS.md](SETTINGS.md)**: it explains every pictur
   into the capture card's HDMI input.
 - Audio isn't handled: take it off in your AV receiver before the video reaches the capture card.
 
+> **HDCP is not supported.** HDCP is the copy protection many sources put on their HDMI output: most streaming
+> boxes and apps, UHD Blu-ray players and many TV boxes. DeckLink cards are made for professional video and
+> don't accept HDCP-protected signals, so a protected source shows **NO SIGNAL**. That's a limit of the capture
+> card, and mpv-vproc-web can't change it. Some sources, such as game consoles and PCs, have a setting to turn
+> HDCP off; with others, check what your player offers before you buy hardware for this project.
+
 **Software**
 - **A 64-bit Linux installation** (x86_64). The commands below are given for **Ubuntu / Debian** and for
   **Fedora / RHEL** (and their relatives such as Rocky or AlmaLinux). Other distributions work too, but you'll
@@ -72,6 +78,28 @@ systemctl get-default
 
 If you previously used mpv or another player on this output, stop it too.
 
+### Going back to a desktop
+
+If you need the desktop again later, for example to use Blackmagic's setup app in step 4, stop mpv-vproc-web first
+so the two don't fight over the display:
+
+```sh
+cd ~/mpv-vproc-web && docker compose stop    # skip this if you haven't installed it yet
+```
+
+Then either start the desktop **just this once** (it's gone again after the next reboot):
+```sh
+sudo systemctl isolate graphical.target
+```
+or make it start **at every boot** again:
+```sh
+sudo systemctl set-default graphical.target
+sudo reboot
+```
+
+To return to mpv-vproc-web afterwards, switch back to `multi-user.target` as above, reboot, and run
+`docker compose start` in `~/mpv-vproc-web`.
+
 ---
 
 ## 3. Graphics driver
@@ -84,10 +112,13 @@ sudo apt update
 sudo ubuntu-drivers install        # Ubuntu: installs the recommended NVIDIA driver
 sudo reboot
 ```
-On Debian, follow the Debian wiki page "NvidiaGraphicsDrivers".
+On Debian, follow the Debian wiki's [NvidiaGraphicsDrivers](https://wiki.debian.org/NvidiaGraphicsDrivers) page.
 
-**Fedora / RHEL**: follow NVIDIA's or RPM Fusion's instructions for your release (search "RPM Fusion NVIDIA" for
-Fedora, "NVIDIA driver RHEL" for RHEL), then reboot.
+**Fedora**: follow RPM Fusion's [NVIDIA howto](https://rpmfusion.org/Howto/NVIDIA), then reboot.
+
+**RHEL** (and Rocky, AlmaLinux): follow NVIDIA's
+[driver installation guide](https://docs.nvidia.com/datacenter/tesla/driver-installation-guide/) for your
+release, then reboot.
 
 ### Check it
 
@@ -133,8 +164,9 @@ that the display is on.
 
 Desktop Video is Blackmagic's driver for the capture card.
 
-1. On another computer, go to Blackmagic Design's **Support Center**, choose **Capture and Playback**, and
-   download the latest **Desktop Video for Linux**. Copy the downloaded `.tar.gz` file to the server (for
+1. On another computer, open Blackmagic Design's
+   [Capture and Playback support page](https://www.blackmagicdesign.com/support/family/capture-and-playback)
+   and download the latest **Desktop Video** for **Linux** (it asks for a few registration details first). Copy the downloaded `.tar.gz` file to the server (for
    example with `scp`, or a USB stick).
 2. The driver is compiled for your kernel during installation, so install the tools for that first:
    - **Ubuntu / Debian:**
@@ -175,6 +207,56 @@ BlackmagicFirmwareUpdater status
 If it reports that an update is available, run the update it suggests, then power the computer off completely
 and on again.
 
+### Choose the card's input
+
+Some cards have more than one kind of input. The DeckLink Mini Recorder 4K, for example, has both SDI and HDMI,
+and it has to be told to use **HDMI**, otherwise it reports no signal even with a source connected. Cards with
+only HDMI inputs, such as the DeckLink Quad HDMI Recorder, have nothing to choose, so you can skip this.
+
+The input is chosen in Blackmagic's **Desktop Video Setup** app. Blackmagic doesn't make a text (terminal) version
+of it: it's a graphical app, so on a server without a desktop you have two ways to reach it. You only need to do
+this once per card: the choice is stored on the computer and kept across reboots and updates.
+
+First install the app. It's in the `desktopvideo-gui` package, in the same folder you installed from above:
+- **Ubuntu / Debian:** `sudo apt install ./deb/x86_64/desktopvideo-gui_*.deb`
+- **Fedora / RHEL:** `sudo dnf install ./rpm/x86_64/desktopvideo-gui-*.rpm`
+
+**Way 1: show its window on your own computer, over SSH** (nothing changes on the server's display).
+This uses "X forwarding": the app runs on the server, and its window is drawn on the computer you're sitting at.
+1. On the server, install the small helper this needs:
+   - Ubuntu / Debian: `sudo apt install xauth`
+   - Fedora / RHEL: `sudo dnf install xorg-x11-xauth`
+2. On the computer you're sitting at, you need something that can draw the window:
+   - **Linux** with a desktop: nothing to install.
+   - **Windows**: use [MobaXterm](https://mobaxterm.mobatek.net/) (free Home edition) as your SSH program;
+     it draws forwarded windows on its own.
+   - **macOS**: install [XQuartz](https://www.xquartz.org/), then log out and back in.
+3. Connect with `-X` added (in MobaXterm, just start an SSH session; X forwarding is on by default):
+   ```sh
+   ssh -X you@server
+   ```
+4. Start the app:
+   ```sh
+   BlackmagicDesktopVideoSetup
+   ```
+   After a few seconds its window opens on your computer. If you see `cannot open display` or `could not connect
+   to display`, X forwarding isn't working: check you connected with `-X` and installed `xauth` on the server.
+
+**Way 2: start the desktop for a moment.** If the server has a desktop installed and a screen and mouse attached,
+start it with `sudo systemctl isolate graphical.target` (see [Going back to a desktop](#going-back-to-a-desktop)),
+open **Blackmagic Desktop Video Setup** from the applications menu, and reboot when you're done.
+
+In the app:
+1. The home page shows your card. Click its picture (or the round settings icon below it).
+2. In the **Video** tab, under **Video Input**, choose **HDMI**.
+3. Click **Save**, and close the app.
+
+With a source connected and playing, the home page shows the detected format under the input icon, for example
+`2160p23.98`. That's a good sign everything up to the card works.
+
+The **DeckLink Quad HDMI Recorder** shows up as four separate cards (one per input). mpv-vproc-web uses the first
+by default; to use another, set `VPROC_DEVICE` in step 8. The doctor (step 9) lists them all with their numbers.
+
 ---
 
 ## 5. Docker
@@ -209,13 +291,20 @@ docker compose version
 ```
 The first prints "Hello from Docker!", the second a version number.
 
+The first time you run `hello-world`, it starts with `Unable to find image 'hello-world:latest' locally` and a
+few `Pull complete` lines. That isn't an error: Docker didn't have that tiny test container yet, so it downloaded
+it before running it. If the "Hello from Docker!" message follows, Docker can download and run containers, which
+is everything it needs to do for mpv-vproc-web. (If you get `permission denied`, you haven't logged out and back
+in since the `usermod` command.)
+
 ---
 
 ## 6. NVIDIA Container Toolkit
 
-This lets containers use the NVIDIA graphics card. Follow NVIDIA's guide **"Installing the NVIDIA Container
-Toolkit"** (docs.nvidia.com/datacenter/cloud-native/container-toolkit/) for your distribution: it's a few
-commands to add their package source and install `nvidia-container-toolkit`. Then connect it to Docker:
+This lets containers use the NVIDIA graphics card. Follow NVIDIA's guide
+**[Installing the NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)**
+for your distribution (it has a section each for apt and dnf): it's a few commands to add their package source and
+install `nvidia-container-toolkit`. Then connect it to Docker:
 
 ```sh
 sudo nvidia-ctk runtime configure --runtime=docker
@@ -261,17 +350,58 @@ different one in step 8 (`VPROC_PORT`).
 
 ## 8. Download mpv-vproc-web and fill in your settings
 
-You only need two files: `compose.yml` (tells Docker how to run the container) and `.env` (your settings).
+You need two files: `compose.yml` (tells Docker how to run the container) and `.env` (your settings). A helper
+script fills in `.env` for you.
 
 ```sh
 mkdir -p ~/mpv-vproc-web && cd ~/mpv-vproc-web
 curl -fsSLO https://raw.githubusercontent.com/fattykidd/mpv-vproc-web/main/compose.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/fattykidd/mpv-vproc-web/main/.env.example
-ls -a
+curl -fsSLO https://raw.githubusercontent.com/fattykidd/mpv-vproc-web/main/.env.example
+curl -fsSLO https://raw.githubusercontent.com/fattykidd/mpv-vproc-web/main/scripts/setup-env.sh
+bash setup-env.sh
 ```
-You should see `compose.yml` and `.env`.
 
-Now collect three values.
+The script looks up your group IDs, your display's resolution and where the capture library is, writes them into
+`.env`, and double-checks steps 3 to 6 on the way. It only reads from your system; `.env` is the one file it
+writes. The output looks like this:
+
+```
+Graphics card
+  ok    video group id: 39
+  ok    render group id: 105
+  ok    NVIDIA driver: NVIDIA GeForce RTX 5060 Ti, 620.70.06
+  ok    modesetting is on
+
+Display
+  ok    HDMI-A-1: 3840x2160
+
+Capture card
+  ok    inputs: io0
+  ok    capture library: /lib64/libDeckLinkAPI.so
+
+Docker
+  ok    Docker 29.1.0
+  ok    NVIDIA Container Toolkit
+
+Done. .env is filled in. Next: docker compose pull && docker compose up -d
+```
+
+A `FAIL` line names the step to go back to. Fix it and run `bash setup-env.sh` again; it keeps your previous
+`.env` as `.env.bak` each time.
+
+**Check the resolution.** If more than one display is connected, the script lists them all and uses the first
+one's resolution. If that isn't your projector or TV, change `VPROC_OUTPUT_SIZE` (below).
+
+Everything else in `.env` is optional and explained by the comments next to it. To look at or change it:
+```sh
+nano .env
+```
+Save with **Ctrl+O**, **Enter**, then exit with **Ctrl+X**.
+
+<details>
+<summary><b>Filling in .env by hand instead</b></summary>
+
+Copy the template: `cp .env.example .env`. Then collect three values.
 
 **Your group IDs** (they allow the container to use the graphics card):
 ```sh
@@ -283,15 +413,11 @@ This prints something like `video:x:39:...` and `render:x:105:`. The numbers aft
 ```sh
 cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | head -n 1
 ```
-For a 4K projector this is `3840x2160`. Use a `DP` instead of `HDMI-A` if your display is connected by DisplayPort.
+For a 4K projector this is `3840x2160`. Use `DP` instead of `HDMI-A` if your display is connected by DisplayPort.
 
 **The capture library path** from step 4.
 
-Open the settings file:
-```sh
-nano .env
-```
-Change these lines near the top to your values:
+Open `.env` with `nano .env` and change these lines near the top to your values:
 ```sh
 VIDEO_GID=39
 RENDER_GID=105
@@ -302,8 +428,7 @@ remove the `#` and set your path:
 ```sh
 DECKLINK_LIB=/lib64/libDeckLinkAPI.so
 ```
-Save with **Ctrl+O**, **Enter**, then exit with **Ctrl+X**. Everything else in the file is optional and
-explained by the comments next to it.
+</details>
 
 ---
 
@@ -428,6 +553,57 @@ Your presets and settings are kept.
 To stay on a particular release instead, set `VPROC_VERSION=0.1.0` (for example) in `.env`. Releases are
 listed at https://github.com/fattykidd/mpv-vproc-web/releases.
 
+### Updating automatically with Watchtower
+
+[Watchtower](https://hub.docker.com/r/nickfedor/watchtower) checks for new releases on a schedule and updates the
+container for you. (This is Nicholas Fedor's maintained continuation of the original Watchtower project;
+documentation at [watchtower.nickfedor.com](https://watchtower.nickfedor.com).)
+
+mpv-vproc-web's `compose.yml` already carries the label that tells Watchtower it may update it. Set Watchtower up
+in its own folder:
+
+```sh
+mkdir -p ~/watchtower && cd ~/watchtower
+timedatectl show -p Timezone --value
+nano compose.yml
+```
+The `timedatectl` command prints your time zone, for example `America/Edmonton`. Paste this into the empty file,
+put your time zone on the `TZ` line, then save and exit (**Ctrl+O**, **Enter**, **Ctrl+X**):
+
+```yaml
+services:
+  watchtower:
+    image: nickfedor/watchtower
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: America/Edmonton
+      # Only update containers that ask for it (mpv-vproc-web does), not everything on this computer.
+      WATCHTOWER_LABEL_ENABLE: "true"
+      # Check every day at 4 in the morning (seconds, minutes, hours, day, month, weekday).
+      WATCHTOWER_SCHEDULE: "0 0 4 * * *"
+      # Delete the old image after updating, so they don't fill up the disk.
+      WATCHTOWER_CLEANUP: "true"
+```
+
+Start it and check that it's happy:
+```sh
+docker compose up -d
+docker compose logs
+```
+The log should say Watchtower started and when it will next check.
+
+Good to know:
+- **`WATCHTOWER_LABEL_ENABLE` matters.** Without it, Watchtower updates *every* container on the computer, including
+  ones you may not want changed unattended (a media server, for example).
+- An update restarts mpv-vproc-web, so the picture goes black for a few seconds. That's why the example checks at
+  4 a.m.; pick a time when nobody's watching.
+- With `VPROC_VERSION` set in `.env`, Watchtower keeps you on that release (and picks up nothing new). Remove the line
+  to follow the newest release.
+- Your presets and settings are kept, just as with a manual update.
+
 **Stop it** (until you start it again with `docker compose up -d`):
 ```sh
 docker compose down
@@ -450,6 +626,7 @@ Start with the doctor (step 9). Beyond that, these are the problems seen so far:
 | The web page doesn't load | Firewall, or another program on port 8000 | Step 7. Test on the server itself with `curl -s localhost:8000/healthz`: if that works, it's the firewall |
 | Black screen, log says `no video output came up` | Something else is using the display (desktop, an old mpv service) or modesetting is off | Step 2 and step 3; `pgrep -a mpv` should print nothing outside the container |
 | Picture works but the log says `the display has no …@23.976 mode` | The display doesn't support that refresh rate | Normal for PC monitors; projectors and TVs usually do support it |
+| **NO SIGNAL** although the source is playing | The source uses HDCP copy protection (most streaming boxes, UHD Blu-ray players), or the card's input is set to SDI | HDCP isn't supported (see [step 1](#1-what-you-need)); try another source or turn HDCP off in the source's settings if it has that option. For the input, see [Choose the card's input](#choose-the-cards-input) |
 | `could not enable video input` | Another program has the capture card open (Media Express, OBS, another container) | Close it |
 | `Desktop Video driver not available` | The capture library path is wrong | `DECKLINK_LIB` in `.env` (step 4/8) |
 | HDR content shows as SDR | The source isn't sending HDR, or the card's firmware is old | Check the source's video settings; `BlackmagicFirmwareUpdater status` |
