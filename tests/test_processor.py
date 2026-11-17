@@ -18,7 +18,8 @@ pytestmark = pytest.mark.skipif(not DLCAP_BIN, reason="DLCAP_BIN not set")
 
 
 class Harness:
-    def __init__(self, tmp_path: Path, script: str, monkeypatch, bad_modes: str = "", **config):
+    def __init__(self, tmp_path: Path, script: str, monkeypatch, bad_modes: str = "",
+                 output_size_override: str = "3840x2160", **config):
         self.log = tmp_path / "mpv.log"
         monkeypatch.setenv("MOCK_DECKLINK_SCRIPT", script)
         monkeypatch.setenv("MOCK_FRAME_INTERVAL_MS", "4")
@@ -26,7 +27,7 @@ class Harness:
         monkeypatch.setenv("FAKE_MPV_BAD_MODES", bad_modes)
         self.config = Config(
             data_dir=tmp_path / "data", run_dir=tmp_path / "run", dlcap_bin=DLCAP_BIN, mpv_bin=FAKE_MPV,
-            output_size="3840x2160", **config,
+            output_size=output_size_override, **config,
         )
         self.processor = Processor(self.config, PresetStore(self.config.data_dir / "presets.json"))
 
@@ -160,6 +161,25 @@ def test_signal_loss_and_return(tmp_path, monkeypatch):
             assert h.entries(event="overlay", format="none")
             # Same format when the signal returns, so mpv keeps running in the same mode.
             assert {e["pid"] for e in h.entries(event="frames")} == {first[0]["pid"]}
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_mode_switch_waits_for_mpv_to_finish_starting(tmp_path, monkeypatch):
+    # Real mpv needs a moment to bring up the display; a segment that arrives
+    # meanwhile must not tear mpv down halfway through its start-up.
+    monkeypatch.setenv("FAKE_MPV_VO_DELAY", "0.6")
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch, output_size_override="1920x1080")
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
+            modes = [e["drm_mode"] for e in h.entries(event="start")]
+            assert modes == ["preferred", "1920x1080@23.976"]
+            assert h.processor.status()["errors"] == []
         finally:
             await h.processor.stop()
 

@@ -65,6 +65,7 @@ class Processor:
         self._tasks: list[asyncio.Task] = []
         self._stopping = False
         self._restart_output = False
+        self._output_ready = False  # mpv is up, its display is on and it's been configured
         self._started_at = time.time()
 
         # Input state, as reported by dlcap.
@@ -251,6 +252,7 @@ class Processor:
                 self.config.mpv_socket,
                 self._on_mpv_event,
             )
+            self._output_ready = False
             self._loaded_segment = None
             self._loaded_entry = None
             try:
@@ -269,11 +271,13 @@ class Processor:
                 continue
 
             self._drm_mode = mode
+            self._output_ready = True
             backoff.mark_started()
             self._notify()
             await self._sync_output()
 
             code = await self._mpv.wait()
+            self._output_ready = False
             await self._mpv.stop()
             self._props.clear()
             self._notify()
@@ -298,8 +302,15 @@ class Processor:
         for prop in OBSERVED:
             await client.observe(prop)
         if not self._defaults:
+            defaults: dict[str, Any] = {}
             for name in OPTIONS:
-                self._defaults[name] = await client.get(f"option-info/{name}/default-value")
+                try:
+                    defaults[name] = await client.command("get_property", f"option-info/{name}/default-value")
+                except MpvError:
+                    if not client.connected:
+                        raise
+                    log.warning("this mpv has no %s option; it can't be reset to a default", name)
+            self._defaults = defaults
         self._applied = self.store.values()
         self._overlay = None
 
@@ -340,7 +351,9 @@ class Processor:
     async def _sync_output(self) -> None:
         """Makes mpv show the current segment, or the no-signal screen."""
         async with self._output_lock:
-            if not (self._mpv and self._mpv.client.connected):
+            # While mpv is still starting, leave it alone; the output supervisor
+            # calls this again as soon as the display is up.
+            if not (self._output_ready and self._mpv and self._mpv.client.connected):
                 return
             client = self._mpv.client
             seg = self._segment

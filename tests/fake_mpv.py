@@ -168,6 +168,10 @@ class FakeMpv:
         record(event="start", drm_mode=mode, options={k: v for k, v in self.opts.items() if k in {"target-peak", "scale"}})
         if mode in filter(None, os.environ.get("FAKE_MPV_BAD_MODES", "").split(",")):
             self.props["current-vo"] = None
+        elif os.environ.get("FAKE_MPV_VO_DELAY"):
+            # Real mpv needs a moment to bring up the display after IPC is ready.
+            self.props["current-vo"] = None
+            self.loop.call_later(float(os.environ["FAKE_MPV_VO_DELAY"]), self.props.__setitem__, "current-vo", "gpu-next")
         server = await asyncio.start_unix_server(self.client, path=self.opts["input-ipc-server"])
         async with server:
             await self.done.wait()

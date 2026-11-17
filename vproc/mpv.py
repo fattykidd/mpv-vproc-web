@@ -256,9 +256,16 @@ class MpvProcess:
                     await asyncio.wait_for(self.proc.wait(), timeout)
                 except asyncio.TimeoutError:
                     self.proc.kill()
-                    await self.proc.wait()
+                    try:
+                        await asyncio.wait_for(self.proc.wait(), timeout)
+                    except asyncio.TimeoutError:
+                        # Stuck in the kernel (usually the GPU driver); nothing more we can do.
+                        log.error("mpv (pid %d) did not exit even after SIGKILL", self.proc.pid)
         if self._log_task:
-            await asyncio.gather(self._log_task, return_exceptions=True)
+            try:
+                await asyncio.wait_for(asyncio.gather(self._log_task, return_exceptions=True), timeout)
+            except asyncio.TimeoutError:
+                self._log_task.cancel()
 
     async def _pump_logs(self) -> None:
         assert self.proc and self.proc.stdout
