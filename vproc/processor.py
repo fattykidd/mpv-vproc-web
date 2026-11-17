@@ -21,6 +21,7 @@ from .config import Config
 from .mpv import MpvError, MpvProcess, build_args
 from .settings import OPTIONS, PresetStore, Value
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
+from .integrations import RemoteIntegration
 from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
 
 log = logging.getLogger("vproc.processor")
@@ -91,6 +92,7 @@ class Processor:
         self._overlay: str | None = None
 
         self._errors: deque[dict[str, Any]] = deque(maxlen=20)
+        self.remote = RemoteIntegration(config, on_change=self._notify)
         self._subscribers: set[asyncio.Queue] = set()
         self._dirty = asyncio.Event()
         self._save_task: asyncio.Task | None = None
@@ -104,9 +106,11 @@ class Processor:
             asyncio.create_task(self._supervise_capture(), name="capture"),
             asyncio.create_task(self._broadcast(), name="broadcast"),
         ]
+        await self.remote.start()
 
     async def stop(self) -> None:
         self._stopping = True
+        await self.remote.stop()
         if self._capture:
             await self._capture.stop()
         if self._mpv:
@@ -157,6 +161,7 @@ class Processor:
                 "stats": self._capture_stats,
             },
             "presets": self.store.state.to_dict(),
+            "integrations": {"uc_remote": self.remote.status()},
             "errors": list(self._errors),
         }
 

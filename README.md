@@ -42,7 +42,8 @@ docker compose up -d --build
 docker compose exec vproc python3 -m vproc.doctor
 ```
 
-Then open `http://<host>:8000`.
+Then open `http://<host>:8000`. The container uses the host's network directly (so an Unfolded Circle
+Remote can find it); if port 8000 is taken on your server, set `VPROC_PORT` in `.env`.
 
 The first build compiles FFmpeg, libplacebo and mpv from their pinned release tags (`FFMPEG_VERSION`,
 `LIBPLACEBO_VERSION`, `MPV_VERSION`), which takes a few minutes. To upgrade one, change its version in `.env`
@@ -77,6 +78,31 @@ about a second of black.
 deinterlacing). For a Quad HDMI Recorder, choose the input with `VPROC_DEVICE`: an index, part of the name
 or `id:<persistent id>` (the doctor lists them). Run one container per input you want to process.
 
+## Unfolded Circle Remote
+
+vproc includes an optional integration driver for the Unfolded Circle Remote Two and Remote 3. It's **off
+by default**: while off, nothing is announced on your network and no port is open.
+
+1. In vproc's web page, under **Integrations**, switch **Unfolded Circle Remote** on. It shows
+   `On · port 9095` once the driver is running.
+2. In the remote's web configurator, open **Integrations → Add new**. *mpv-vproc-web* appears in the list
+   of discovered integrations. Select it and finish the setup; there's nothing to enter.
+3. Choose the entities you want:
+
+| Entity | Type | What it does |
+|---|---|---|
+| Picture preset | Select | Pick a preset, or step through them |
+| Input signal | Sensor | e.g. `2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit`, or `No signal` |
+| Output mode | Sensor | e.g. `3840x2160 @ 23.976 Hz` |
+| Auto preset by signal | Switch | Turns automatic SDR/HDR preset switching on or off |
+| Show signal info | Button | Shows the input signal on screen for 5 seconds |
+| Stats overlay | Button | Toggles mpv's statistics overlay |
+| Restart video output | Button | Restarts mpv |
+
+If the remote doesn't list the integration, check that the remote and the server are on the same network
+(mDNS doesn't cross VLANs or most guest networks) and that port 9095 isn't blocked by the server's firewall.
+The port can be changed with `VPROC_UC_PORT`.
+
 ## HTTP API
 
 Everything the UI does goes through the API. Interactive docs are at `/api/docs`. If `VPROC_API_TOKEN` is
@@ -96,6 +122,7 @@ set, send `Authorization: Bearer <token>`; for the WebSocket, use `?token=`.
 | POST | `/api/osd` | `{"message": "...", "duration_ms": 3000}` |
 | POST | `/api/stats-overlay` | `{"page": null}` toggles mpv's stats overlay |
 | POST | `/api/restart/{capture\|output}` | Restart dlcap or mpv |
+| PUT | `/api/integrations/uc-remote` | `{"enabled": true}` switches the remote integration on or off |
 | GET | `/healthz` | Liveness, no token needed |
 
 Only the options listed in `vproc/settings.py` can be changed, and each value is validated before it
@@ -144,3 +171,12 @@ DLCAP_BIN=capture/dlcap pytest
 ```
 
 Build with `-DMOCK_DECKLINK_API_VERSION=0x0e030000` to test the SDK 14.3+ frame API as well; CI runs both.
+
+## License and credits
+
+The code in this repository is released under the MIT License (see `LICENSE`). The container image also
+contains mpv, libplacebo, FFmpeg and other third-party software under their own licenses. See
+`THIRD_PARTY_NOTICES.md` for the full list, with credits and links to their source code.
+
+This project is compatible with Blackmagic Design DeckLink capture cards and Unfolded Circle remotes. It is not
+affiliated with or endorsed by Blackmagic Design or Unfolded Circle.

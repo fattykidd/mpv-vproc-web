@@ -21,8 +21,9 @@ services:
     env_file:
       - path: .env
         required: false
-    ports:
-      - "${HOST_PORT:-8000}:8000"
+    # Host networking lets an Unfolded Circle Remote discover the driver (mDNS).
+    # The web UI is on port VPROC_PORT (default 8000) of the server itself.
+    network_mode: host
     devices:
       - /dev/dri:/dev/dri                  # GPU display output (KMS)
       - /dev/blackmagic:/dev/blackmagic    # DeckLink card(s)

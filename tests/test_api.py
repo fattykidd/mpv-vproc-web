@@ -79,3 +79,12 @@ def test_osd_and_websocket(client):
     assert client.post("/api/osd", json={"message": "hi"}).status_code == 200
     with client.websocket_connect("/api/ws?token=s3cret") as ws:
         assert "signal" in ws.receive_json()
+
+
+def test_remote_integration_toggle(client):
+    assert client.get("/api/status").json()["integrations"]["uc_remote"]["enabled"] is False
+    on = client.put("/api/integrations/uc-remote", json={"enabled": True})
+    assert on.status_code == 200 and on.json()["enabled"] is True
+    off = client.put("/api/integrations/uc-remote", json={"enabled": False}).json()
+    assert off == {"enabled": False, "running": False, "port": 9095, "error": None}
+    assert client.put("/api/integrations/uc-remote", json={"enabled": "maybe"}).status_code == 422

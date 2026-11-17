@@ -48,6 +48,10 @@ class OsdMessage(Strict):
     duration_ms: int = Field(default=3000, ge=100, le=60000)
 
 
+class IntegrationToggle(Strict):
+    enabled: bool
+
+
 class StatsToggle(Strict):
     page: int | None = Field(default=None, ge=0, le=9)
 
@@ -173,6 +177,11 @@ def create_app(config: Config) -> FastAPI:
     async def restart(target: Literal["capture", "output"]) -> dict[str, Any]:
         await (processor.restart_capture() if target == "capture" else processor.restart_output())
         return {"restarted": target}
+
+    @app.put("/api/integrations/uc-remote", dependencies=api)
+    async def toggle_uc_remote(body: IntegrationToggle) -> dict[str, Any]:
+        await processor.remote.set_enabled(body.enabled)
+        return processor.remote.status()
 
     @app.websocket("/api/ws")
     async def ws(socket: WebSocket) -> None:

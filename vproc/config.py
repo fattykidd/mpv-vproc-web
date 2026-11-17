@@ -87,6 +87,9 @@ class Config:
     mpv_log_level: str = "warn"
     mpv_extra_args: tuple[str, ...] = ()
 
+    # Unfolded Circle Remote integration (switched on and off in the web UI)
+    uc_port: int = 9095
+
     log_level: str = "info"
 
     @property
@@ -121,7 +124,8 @@ class Config:
         # VPROC_DRM_MODE is the older name for VPROC_DISPLAY_MODE.
         if (v := get("DISPLAY_MODE") or get("DRM_MODE")) is not None:
             kw["display_mode"] = v.strip()
-        for key, attr in {"PORT": "port", "QUEUE_DEPTH": "queue_depth", "VULKAN_DISPLAY": "vulkan_display"}.items():
+        integers = {"PORT": "port", "QUEUE_DEPTH": "queue_depth", "VULKAN_DISPLAY": "vulkan_display", "UC_PORT": "uc_port"}
+        for key, attr in integers.items():
             if (v := get(key)) is not None:
                 kw[attr] = _int(v, f"VPROC_{key}")
         if (v := get("MATCH_REFRESH")) is not None:

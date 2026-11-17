@@ -68,6 +68,23 @@
     <nav class="tabs" id="tabs" role="tablist"></nav>
     <section class="panel settings" id="settings" role="tabpanel"></section>
 
+    <section class="panel integrations" aria-label="Integrations">
+      <div class="panel-label">Integrations</div>
+      <div class="integration">
+        <div>
+          <div class="name">Unfolded Circle Remote</div>
+          <div class="help">Lets an Unfolded Circle Remote find and control vproc on your network.
+            While off, nothing is announced and no port is open.</div>
+          <div class="help error-text" id="uc-remote-error" hidden></div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="uc-remote-enabled">
+          <span class="track" aria-hidden="true"></span>
+          <span id="uc-remote-state">Off</span>
+        </label>
+      </div>
+    </section>
+
     <section class="panel tools" aria-label="Tools">
       <div class="panel-label">Tools</div>
       <form class="osd" id="osd-form">

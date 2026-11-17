@@ -156,6 +156,37 @@ function renderStatus(s) {
   )));
 
   renderPresets(s.presets);
+  renderIntegrations(s.integrations || {});
+}
+
+// ------------------------------------------------------------------ integrations
+
+function renderIntegrations(integrations) {
+  const uc = integrations.uc_remote;
+  if (!uc) return;
+  const toggle = $("#uc-remote-enabled");
+  if (!toggle.disabled) toggle.checked = uc.enabled;
+  $("#uc-remote-state").textContent = !uc.enabled ? "Off" : uc.running ? `On · port ${uc.port}` : "Starting…";
+  const error = $("#uc-remote-error");
+  error.hidden = !uc.error;
+  error.textContent = uc.error || "";
+}
+
+function bindIntegrations() {
+  const toggle = $("#uc-remote-enabled");
+  toggle.addEventListener("change", async () => {
+    const enabled = toggle.checked;
+    toggle.disabled = true;
+    try {
+      await api("PUT", "/api/integrations/uc-remote", { enabled });
+      toast(enabled ? "Remote integration on" : "Remote integration off");
+    } catch (err) {
+      toggle.checked = !enabled;
+      toast(err.message, true);
+    } finally {
+      toggle.disabled = false;
+    }
+  });
 }
 
 // ------------------------------------------------------------------ presets
@@ -380,6 +411,7 @@ function connect() {
 
 async function init() {
   bindPresetControls();
+  bindIntegrations();
   bindTools();
   try {
     state.schema = await api("GET", "/api/schema");
