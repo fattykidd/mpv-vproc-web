@@ -63,7 +63,7 @@ def test_sdr_then_hdr_switches_mode_preset_and_tagging(tmp_path, monkeypatch):
             assert h.entries(event="start")[-1]["drm_mode"] == "3840x2160@60"
 
             hdr = await h.until(lambda: [e for e in h.entries(event="loadfile") if "gamma=pq" in e["options"]["vf"]], what="HDR load")
-            assert "sig-peak=4.9261" in hdr[0]["options"]["vf"]
+            assert "max-luma=1000" in hdr[0]["options"]["vf"]
             starts = h.entries(event="start")
             assert starts[-1]["drm_mode"] == "3840x2160@23.976"
             assert len({s["pid"] for s in starts}) >= 2  # mpv restarted for the new refresh rate
@@ -131,7 +131,7 @@ def test_live_settings_and_hdr_metadata_updates(tmp_path, monkeypatch):
                 await h.processor.update_settings({"input-ipc-server": "/tmp/evil"})
 
             vf = await h.until(lambda: h.entries(event="set", name="vf"), what="live vf update")
-            assert "sig-peak=19.7044" in vf[-1]["value"]  # 4000 / 203
+            assert "max-luma=4000" in vf[-1]["value"]
 
             await h.processor.activate_preset("SDR")
             # Options the SDR preset doesn't set go back to mpv's default.

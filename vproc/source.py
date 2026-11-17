@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-# mpv/libplacebo measure HDR relative to a 203 cd/m² reference white (BT.2408).
-REFERENCE_WHITE_NITS = 203.0
 
 SIGNAL_KINDS = ("sdr", "hdr10", "hlg")
 
@@ -192,7 +190,7 @@ def video_filter(segment: Segment, colorimetry: Colorimetry | None = None, rgb_r
         params += [f"colormatrix={matrix}", "colorlevels=limited"]
     params += [f"primaries={_primaries(segment, c)}", f"gamma={_TRANSFER.get(c.transfer, 'bt.1886')}"]
     if c.peak_nits > 0:
-        params.append(f"sig-peak={c.peak_nits / REFERENCE_WHITE_NITS:.4f}")
+        params.append(f"max-luma={c.peak_nits:g}")
 
     chain = ["format=" + ":".join(params)]
     if segment.interlaced:

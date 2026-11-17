@@ -34,7 +34,7 @@ def test_sdr_options():
 def test_hdr10_tags_pq_and_peak_from_maxcll():
     vf = video_filter(segment(colorimetry=HDR10))
     assert "colormatrix=bt.2020-ncl" in vf and "primaries=bt.2020" in vf and "gamma=pq" in vf
-    assert "sig-peak=4.9261" in vf  # 1000 / 203
+    assert "max-luma=1000" in vf
 
 
 def test_peak_falls_back_to_mastering_luminance():
