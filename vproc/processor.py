@@ -21,6 +21,7 @@ from .config import Config
 from .mpv import MpvError, MpvProcess, build_args
 from .settings import OPTIONS, PresetStore, Value
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
+from .inputs import InputChoice, check_spec, matches
 from .integrations import RemoteIntegration
 from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
 
@@ -76,6 +77,8 @@ class Processor:
         self._colorimetry: Colorimetry | None = None
         self._capture_info: dict[str, Any] = {}
         self._capture_stats: dict[str, Any] = {}
+        self.inputs = InputChoice(config.data_dir / "input.json", config.device)
+        self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
         # Output state.
         self._display_mode = config.display_mode
@@ -156,6 +159,8 @@ class Processor:
                 "running": bool(self._capture and self._capture.running),
                 "device": self._capture_info.get("device"),
                 "devices": self._capture_info.get("devices", []),
+                "selected": self.inputs.device,
+                "selected_in": "web" if self.inputs.chosen else "env",
                 "driver": self._capture_info.get("driver"),
                 "dlcap": self._capture_info.get("version"),
                 "stats": self._capture_stats,
@@ -213,6 +218,21 @@ class Processor:
             await client.command("script-binding", "stats/display-stats-toggle")
         else:
             await client.command("script-binding", f"stats/display-page-{page}")
+
+    async def select_input(self, spec: str | None) -> None:
+        """Captures from another input (None: back to VPROC_DEVICE). The choice is kept across restarts."""
+        check_spec(spec)
+        devices = self._capture_info.get("devices", [])
+        if spec is not None and devices and not any(matches(spec, d) for d in devices):
+            raise KeyError(spec)
+        before = self.inputs.device
+        self.inputs.set(spec)
+        if self.inputs.device != before:
+            log.info("switching capture input to %s", self.inputs.device)
+            self._capture_wake.set()
+            if self._capture:
+                await self._capture.stop()  # the supervisor starts dlcap again on the new input
+        self._notify()
 
     async def restart_capture(self) -> None:
         if self._capture:
@@ -493,9 +513,10 @@ class Processor:
     async def _supervise_capture(self) -> None:
         backoff = Backoff()
         while not self._stopping:
+            self._capture_wake.clear()
             self._capture = CaptureProcess(
                 self.config.dlcap_bin,
-                self.config.device,
+                self.inputs.device,
                 self.config.fifo_dir,
                 self.config.queue_depth,
                 self._on_capture_event,
@@ -520,7 +541,8 @@ class Processor:
             await self._sync_output()
             if code in SETUP_ERRORS:
                 self._error("capture", f"{SETUP_ERRORS[code]}; retrying in 30 s")
-                await asyncio.sleep(30)
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self._capture_wake.wait(), 30)
             elif code != 0:
                 self._error("capture", f"dlcap exited with status {code}; restarting")
                 await backoff.sleep()

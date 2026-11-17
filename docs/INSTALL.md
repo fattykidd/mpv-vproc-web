@@ -274,13 +274,12 @@ With a source connected and playing, the home page shows the detected format und
 `2160p23.98`. That's a good sign everything up to the card works.
 
 The **DeckLink Quad HDMI Recorder** shows up as four separate cards, one per HDMI input, named
-`DeckLink Quad HDMI Recorder (1)` to `(4)`. mpv-vproc-web uses the first by default. The doctor (step 9) lists
-them all, each with an `id:`; to choose one, put its id in `.env`, for example:
-```sh
-VPROC_DEVICE=id:3255474416
-```
-The id stays the same even if the card moves to another slot or you add a second card, so it's safer than the
-device number.
+`DeckLink Quad HDMI Recorder (1)` to `(4)`. Once mpv-vproc-web is running, choose the input in the web page: the
+menu next to **Input** lists them all. Your choice is remembered, even after restarts and updates.
+
+mpv-vproc-web starts on the first input until you choose another. To change that starting point instead, put the
+input's `id:` from the doctor (step 9) in `.env`, for example `VPROC_DEVICE=id:3255474416`. The id stays the same
+even if the card moves to another slot, so it's safer than the input's number.
 
 ---
 
@@ -413,6 +412,9 @@ Done. .env is filled in. Next: docker compose pull && docker compose up -d
 
 A `FAIL` line names the step to go back to. Fix it and run `bash setup-env.sh` again; it keeps your previous
 `.env` as `.env.bak` each time.
+
+Running it again only updates the values it detects; anything else you changed in `.env` stays as it is. If you
+delete `.env` and start over, the script begins from the template, so add back any lines you changed yourself.
 
 **Check the resolution.** If more than one display is connected, the script lists them all and uses the first
 one's resolution. If that isn't your projector or TV, change `VPROC_OUTPUT_SIZE` (below).
@@ -586,8 +588,8 @@ removing a card, a restart isn't enough; recreate the container:
 cd ~/mpv-vproc-web
 docker compose up -d --force-recreate
 ```
-Check the card's firmware first ([step 4](#update-the-cards-firmware)), and if you set `VPROC_DEVICE`, update it to
-the new card's id from the doctor.
+Check the card's firmware first ([step 4](#update-the-cards-firmware)), then choose the input again in the web page (and
+update `VPROC_DEVICE` if you set it).
 
 ### Updating automatically with Watchtower
 

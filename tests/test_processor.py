@@ -205,3 +205,52 @@ def test_mode_switch_waits_for_mpv_to_finish_starting(tmp_path, monkeypatch):
             await h.processor.stop()
 
     run(scenario())
+
+
+def test_choosing_an_input_restarts_capture_on_it_and_is_remembered(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOCK_DEVICES", ",".join(f"DeckLink Quad HDMI Recorder ({n})" for n in range(1, 5)))
+    h = Harness(tmp_path, "1080p60:yuv10:sdr:100000", monkeypatch)
+    capture = lambda: h.processor.status()["capture"]  # noqa: E731
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: (capture()["device"] or {}).get("index") == 0, what="the first input")
+            assert len(capture()["devices"]) == 4
+            assert (capture()["selected"], capture()["selected_in"]) == ("0", "env")
+
+            with pytest.raises(KeyError):
+                await h.processor.select_input("id:9999")
+            with pytest.raises(ValueError):
+                await h.processor.select_input("Quad")
+
+            await h.processor.select_input("id:1002")
+            await h.until(lambda: (capture()["device"] or {}).get("index") == 2, what="the third input")
+            assert (capture()["selected"], capture()["selected_in"]) == ("id:1002", "web")
+        finally:
+            await h.processor.stop()
+
+        # A new processor (as after a restart of the container) starts on the chosen input.
+        again = Processor(h.config, PresetStore(h.config.data_dir / "presets.json"))
+        assert again.inputs.device == "id:1002"
+
+    run(scenario())
+
+
+def test_choosing_an_input_ends_the_wait_after_a_missing_device(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOCK_DEVICES", "DeckLink Quad HDMI Recorder (1),DeckLink Quad HDMI Recorder (2)")
+    h = Harness(tmp_path, "1080p60:yuv10:sdr:100000", monkeypatch, device="id:4242")
+    capture = lambda: h.processor.status()["capture"]  # noqa: E731
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: any("capture device not found" in e["message"] for e in h.processor.status()["errors"]),
+                          what="the missing-device error")
+            await h.processor.select_input("id:1001")
+            # Well within the 30 s retry wait.
+            await h.until(lambda: (capture()["device"] or {}).get("index") == 1, timeout=5, what="the chosen input")
+        finally:
+            await h.processor.stop()
+
+    run(scenario())

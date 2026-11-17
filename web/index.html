@@ -20,7 +20,10 @@
   <main>
     <section class="status" aria-label="Status">
       <article class="panel status-signal">
-        <div class="panel-label">Input</div>
+        <div class="input-head">
+          <div class="panel-label">Input</div>
+          <select id="input-select" aria-label="Capture input" hidden></select>
+        </div>
         <div class="signal-row">
           <span class="pill" id="signal-pill">—</span>
           <span class="signal-label" id="signal-label">Waiting for status</span>

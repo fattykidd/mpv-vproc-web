@@ -20,6 +20,7 @@ const state = {
   controls: new Map(),   // option name -> { row, set(value) }
   tab: localStorage.getItem("vproc-tab") || null,
   presetsKey: "",
+  inputsKey: "",
 };
 
 // ------------------------------------------------------------------ helpers
@@ -155,6 +156,7 @@ function renderStatus(s) {
     el("span", { textContent: e.message }),
   )));
 
+  renderInputs(cap);
   renderPresets(s.presets);
   renderIntegrations(s.integrations || {});
 }
@@ -170,6 +172,37 @@ function renderIntegrations(integrations) {
   const error = $("#uc-remote-error");
   error.hidden = !uc.error;
   error.textContent = uc.error || "";
+}
+
+// The value sent back for an input: its persistent id where the card has one, else its position.
+const inputSpec = (d) => (d.persistent_id >= 0 ? `id:${d.persistent_id}` : String(d.index));
+
+function renderInputs(cap) {
+  const select = $("#input-select");
+  const inputs = (cap.devices || []).filter((d) => d.can_capture);
+  select.hidden = inputs.length < 2;
+  if (document.activeElement === select) return;
+  const key = JSON.stringify([inputs, cap.selected, cap.device?.index]);
+  if (key === state.inputsKey) return;
+  state.inputsKey = key;
+
+  // What's open now; failing that (e.g. the chosen input is missing), what was asked for.
+  const current = inputs.find((d) => d.index === cap.device?.index)
+    ?? inputs.find((d) => inputSpec(d) === cap.selected || String(d.index) === cap.selected);
+  select.replaceChildren(
+    ...(current ? [] : [el("option", { value: "", textContent: "Choose an input", disabled: true })]),
+    ...inputs.map((d) => el("option", { value: inputSpec(d), textContent: d.name })),
+  );
+  select.value = current ? inputSpec(current) : "";
+}
+
+function bindInputs() {
+  const select = $("#input-select");
+  select.addEventListener("change", () => {
+    const name = select.selectedOptions[0]?.textContent;
+    run(() => api("PUT", "/api/input", { device: select.value }), `Switching to ${name}`);
+    select.blur();
+  });
 }
 
 function bindIntegrations() {
@@ -411,6 +444,7 @@ function connect() {
 
 async function init() {
   bindPresetControls();
+  bindInputs();
   bindIntegrations();
   bindTools();
   try {

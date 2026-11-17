@@ -52,6 +52,10 @@ class IntegrationToggle(Strict):
     enabled: bool
 
 
+class InputSelect(Strict):
+    device: str | None = Field(max_length=40)
+
+
 class StatsToggle(Strict):
     page: int | None = Field(default=None, ge=0, le=9)
 
@@ -177,6 +181,11 @@ def create_app(config: Config) -> FastAPI:
     async def restart(target: Literal["capture", "output"]) -> dict[str, Any]:
         await (processor.restart_capture() if target == "capture" else processor.restart_output())
         return {"restarted": target}
+
+    @app.put("/api/input", dependencies=api)
+    async def select_input(body: InputSelect) -> dict[str, Any]:
+        await processor.select_input(body.device)
+        return {"selected": processor.inputs.device, "selected_in": "web" if processor.inputs.chosen else "env"}
 
     @app.put("/api/integrations/uc-remote", dependencies=api)
     async def toggle_uc_remote(body: IntegrationToggle) -> dict[str, Any]:

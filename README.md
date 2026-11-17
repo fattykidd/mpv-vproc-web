@@ -93,8 +93,10 @@ mode the display doesn't offer (PC monitors rarely do 23.976 Hz) is skipped with
 about a second of black.
 
 **Inputs.** 8-, 10- and 12-bit YCbCr 4:2:2 and RGB 4:4:4 are supported, progressive and interlaced (bwdif
-deinterlacing). For a Quad HDMI Recorder, choose the input with `VPROC_DEVICE`: an index, part of the name
-or `id:<persistent id>` (the doctor lists them). Run one container per input you want to process.
+deinterlacing). With a card that has several inputs, such as the Quad HDMI Recorder, pick the
+input in the web UI (the menu next to **Input**); the choice is kept across restarts. `VPROC_DEVICE` sets the
+default: an index, part of the name or `id:<persistent id>` (the doctor lists them). One container processes one
+input at a time.
 
 ## Unfolded Circle Remote
 
@@ -140,6 +142,7 @@ set, send `Authorization: Bearer <token>`; for the WebSocket, use `?token=`.
 | POST | `/api/osd` | `{"message": "...", "duration_ms": 3000}` |
 | POST | `/api/stats-overlay` | `{"page": null}` toggles mpv's stats overlay |
 | POST | `/api/restart/{capture\|output}` | Restart dlcap or mpv |
+| PUT | `/api/input` | `{"device": "id:1234"}` (or an index) captures from another input and remembers it; `null` returns to `VPROC_DEVICE` |
 | PUT | `/api/integrations/uc-remote` | `{"enabled": true}` switches the remote integration on or off |
 | GET | `/healthz` | Liveness, no token needed |
 
