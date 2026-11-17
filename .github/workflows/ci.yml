@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Pre- and post-14.3 DeckLink SDK frame APIs.
+        sdk-api: ["0x0e020100", "0x0e030000"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Build dlcap against the simulated card
+        run: |
+          make -C capture DECKLINK_SDK_INCLUDE=../tests/mock_sdk/include \
+            CXXFLAGS="-O1 -g -DMOCK_DECKLINK_API_VERSION=${{ matrix.sdk-api }} -fsanitize=address,undefined" \
+            LDLIBS="-ldl -pthread -fsanitize=address,undefined"
+      - run: pip install -r requirements-dev.txt
+      - name: Tests
+        run: DLCAP_BIN=capture/dlcap python -m pytest -q

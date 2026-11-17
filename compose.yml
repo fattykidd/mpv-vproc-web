@@ -1,0 +1,52 @@
+# vproc: copy .env.example to .env, fill in the first section, then
+#   docker compose up -d --build
+#   docker compose exec vproc python3 -m vproc.doctor   # if anything is off
+
+services:
+  vproc:
+    build:
+      context: .
+      additional_contexts:
+        # Your copy of the Blackmagic DeckLink SDK headers; never committed or published.
+        decklink_sdk: ${DECKLINK_SDK_INCLUDE:?set DECKLINK_SDK_INCLUDE in .env to the DeckLink SDK's Linux/include folder}
+      args:
+        FFMPEG_VERSION: ${FFMPEG_VERSION:-9.0.2}
+        LIBPLACEBO_VERSION: ${LIBPLACEBO_VERSION:-7.387.0}
+        MPV_VERSION: ${MPV_VERSION:-0.42.0}
+    image: vproc:local
+    container_name: vproc
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+    devices:
+      - /dev/dri:/dev/dri                  # GPU display output (KMS)
+      - /dev/blackmagic:/dev/blackmagic    # DeckLink card(s)
+    group_add:
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-109}"
+    volumes:
+      # The capture library from the host's Desktop Video install (proprietary, so mounted, not copied).
+      - ${DECKLINK_LIB:-/usr/lib/libDeckLinkAPI.so}:/usr/lib/libDeckLinkAPI.so:ro
+      - vproc-data:/data
+    tmpfs:
+      - /run/vproc:uid=1000,gid=1000,mode=0770,size=16m
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  vproc-data:

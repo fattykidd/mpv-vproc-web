@@ -1,0 +1,145 @@
+"""Runtime configuration, read once from VPROC_* environment variables."""
+
+from __future__ import annotations
+
+import os
+import shlex
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+
+# Source frame rate -> display refresh rate. Rates most displays can't show
+# natively (25, 30) are doubled so every frame is repeated evenly.
+DEFAULT_REFRESH_MAP: dict[float, float] = {
+    23.976: 23.976,
+    24.0: 24.0,
+    25.0: 50.0,
+    29.97: 59.94,
+    30.0: 60.0,
+    50.0: 50.0,
+    59.94: 59.94,
+    60.0: 60.0,
+}
+
+
+class ConfigError(ValueError):
+    """An environment variable holds a value we can't use."""
+
+
+def _bool(value: str, name: str) -> bool:
+    v = value.strip().lower()
+    if v in {"1", "true", "yes", "on"}:
+        return True
+    if v in {"0", "false", "no", "off", ""}:
+        return False
+    raise ConfigError(f"{name} must be true or false, got {value!r}")
+
+
+def _int(value: str, name: str) -> int:
+    try:
+        return int(value)
+    except ValueError:
+        raise ConfigError(f"{name} must be an integer, got {value!r}") from None
+
+
+def _refresh_map(value: str, name: str) -> dict[float, float]:
+    """Parses "23.976=23.976,25=50,..." into a source->display rate map."""
+    result: dict[float, float] = {}
+    for item in filter(None, (p.strip() for p in value.split(","))):
+        try:
+            src, dst = item.split("=", 1)
+            result[float(src)] = float(dst)
+        except ValueError:
+            raise ConfigError(f"{name}: expected source=display pairs, got {item!r}") from None
+    return result
+
+
+@dataclass(frozen=True)
+class Config:
+    # Web/API
+    host: str = "0.0.0.0"
+    port: int = 8000
+    api_token: str = ""
+
+    # Paths
+    data_dir: Path = Path("/data")
+    run_dir: Path = Path("/run/vproc")
+    web_dir: Path = Path(__file__).resolve().parent.parent / "web"
+
+    # Capture
+    dlcap_bin: str = "dlcap"
+    device: str = "0"
+    queue_depth: int = 2
+
+    # Output (mpv)
+    mpv_bin: str = "mpv"
+    gpu_api: str = "opengl"
+    gpu_context: str = "drm"
+    drm_device: str = ""
+    drm_connector: str = ""
+    drm_mode: str = "preferred"
+    drm_format: str = "xrgb8888"
+    output_size: str = ""  # e.g. 3840x2160; required for refresh-rate matching
+    match_refresh: bool = True
+    refresh_map: dict[float, float] = field(default_factory=lambda: dict(DEFAULT_REFRESH_MAP))
+    rgb_range: str = "full"  # how to treat RGB input: full | limited
+    mpv_log_level: str = "warn"
+    mpv_extra_args: tuple[str, ...] = ()
+
+    log_level: str = "info"
+
+    @property
+    def mpv_socket(self) -> Path:
+        return self.run_dir / "mpv.sock"
+
+    @property
+    def fifo_dir(self) -> Path:
+        return self.run_dir / "fifo"
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> Config:
+        env = os.environ if env is None else env
+
+        def get(key: str) -> str | None:
+            return env.get(f"VPROC_{key}")
+
+        kw: dict = {}
+        strings = {
+            "HOST": "host", "API_TOKEN": "api_token", "DLCAP_BIN": "dlcap_bin", "DEVICE": "device",
+            "MPV_BIN": "mpv_bin", "GPU_API": "gpu_api", "GPU_CONTEXT": "gpu_context",
+            "DRM_DEVICE": "drm_device", "DRM_CONNECTOR": "drm_connector", "DRM_MODE": "drm_mode",
+            "DRM_FORMAT": "drm_format", "OUTPUT_SIZE": "output_size", "RGB_RANGE": "rgb_range",
+            "MPV_LOG_LEVEL": "mpv_log_level", "LOG_LEVEL": "log_level",
+        }
+        for key, attr in strings.items():
+            if (v := get(key)) is not None:
+                kw[attr] = v.strip()
+        for key, attr in {"DATA_DIR": "data_dir", "RUN_DIR": "run_dir", "WEB_DIR": "web_dir"}.items():
+            if (v := get(key)) is not None:
+                kw[attr] = Path(v)
+        for key, attr in {"PORT": "port", "QUEUE_DEPTH": "queue_depth"}.items():
+            if (v := get(key)) is not None:
+                kw[attr] = _int(v, f"VPROC_{key}")
+        if (v := get("MATCH_REFRESH")) is not None:
+            kw["match_refresh"] = _bool(v, "VPROC_MATCH_REFRESH")
+        if (v := get("REFRESH_MAP")) is not None:
+            kw["refresh_map"] = _refresh_map(v, "VPROC_REFRESH_MAP")
+        if (v := get("MPV_EXTRA_ARGS")) is not None:
+            kw["mpv_extra_args"] = tuple(shlex.split(v))
+
+        config = cls(**kw)
+        config.validate()
+        return config
+
+    def validate(self) -> None:
+        if self.rgb_range not in {"full", "limited"}:
+            raise ConfigError("VPROC_RGB_RANGE must be full or limited")
+        if self.output_size and not _is_size(self.output_size):
+            raise ConfigError("VPROC_OUTPUT_SIZE must look like 3840x2160")
+        if not 1 <= self.queue_depth <= 16:
+            raise ConfigError("VPROC_QUEUE_DEPTH must be between 1 and 16")
+
+
+def _is_size(value: str) -> bool:
+    w, _, h = value.partition("x")
+    return w.isdigit() and h.isdigit()

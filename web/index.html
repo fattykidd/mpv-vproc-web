@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>vproc</title>
+  <link rel="stylesheet" href="/assets/style.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>vproc</span>
+    </div>
+    <div class="conn" id="conn" data-state="connecting">Connecting…</div>
+  </header>
+
+  <main>
+    <section class="status" aria-label="Status">
+      <article class="panel status-signal">
+        <div class="panel-label">Input</div>
+        <div class="signal-row">
+          <span class="pill" id="signal-pill">—</span>
+          <span class="signal-label" id="signal-label">Waiting for status</span>
+        </div>
+        <dl class="facts" id="signal-facts"></dl>
+      </article>
+      <article class="panel">
+        <div class="panel-label">Output</div>
+        <dl class="facts" id="output-facts"></dl>
+      </article>
+      <article class="panel">
+        <div class="panel-label">Capture</div>
+        <dl class="facts" id="capture-facts"></dl>
+      </article>
+    </section>
+
+    <section class="panel errors" id="errors" hidden>
+      <div class="panel-label">Recent problems</div>
+      <ul id="error-list"></ul>
+    </section>
+
+    <section class="panel presets" aria-label="Presets">
+      <div class="presets-head">
+        <div>
+          <div class="panel-label">Preset</div>
+          <div class="preset-picker">
+            <select id="preset-select" aria-label="Active preset"></select>
+            <button type="button" class="ghost" id="preset-new">New</button>
+            <button type="button" class="ghost" id="preset-rename">Rename</button>
+            <button type="button" class="ghost danger" id="preset-delete">Delete</button>
+          </div>
+        </div>
+        <div class="auto">
+          <label class="switch">
+            <input type="checkbox" id="auto-enabled">
+            <span class="track" aria-hidden="true"></span>
+            <span>Switch preset by signal type</span>
+          </label>
+          <div class="auto-map" id="auto-map"></div>
+        </div>
+      </div>
+      <p class="hint">Changes apply live and are saved to the active preset.</p>
+    </section>
+
+    <nav class="tabs" id="tabs" role="tablist"></nav>
+    <section class="panel settings" id="settings" role="tabpanel"></section>
+
+    <section class="panel tools" aria-label="Tools">
+      <div class="panel-label">Tools</div>
+      <form class="osd" id="osd-form">
+        <input type="text" id="osd-text" maxlength="200" placeholder="Show a message on screen" aria-label="On-screen message">
+        <button type="submit">Show</button>
+      </form>
+      <div class="tool-row">
+        <button type="button" class="ghost" data-action="stats">Toggle stats overlay</button>
+        <button type="button" class="ghost" data-action="restart-output">Restart output</button>
+        <button type="button" class="ghost" data-action="restart-capture">Restart capture</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <dialog id="prompt">
+    <form method="dialog">
+      <label id="prompt-label" for="prompt-input"></label>
+      <input id="prompt-input" autocomplete="off">
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost" formnovalidate>Cancel</button>
+        <button value="ok" id="prompt-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
