@@ -1,7 +1,9 @@
 name: release
 
-# Builds the container image and publishes it to GitHub's container registry
-# (ghcr.io/<owner>/mpv-vproc-web) whenever a version tag like v1.1.0 is pushed.
+# Builds the container image, publishes it to GitHub's container registry
+# (ghcr.io/<owner>/mpv-vproc-web) and creates a GitHub release whenever a
+# version tag like v0.1.0 is pushed. Tags with a suffix (v0.2.0-rc1) become
+# pre-releases.
 #
 # The DeckLink SDK headers come from a private repository, so they never appear
 # in this public one. Two repository settings make that work:
@@ -25,6 +27,8 @@ jobs:
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +75,7 @@ jobs:
             org.opencontainers.image.licenses=MIT
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -81,3 +86,64 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write the release notes
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/mpv-vproc-web
+          DIGEST: ${{ needs.image.outputs.digest }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          arg() { sed -n "s/^ARG $1=//p" Dockerfile | head -n 1; }
+          cat > notes.md <<'EOF'
+          ## Install or update
+
+          With the project's `compose.yml` and your `.env` in place:
+
+          ```sh
+          docker compose pull
+          docker compose up -d
+          ```
+
+          New to this? Start with the README: it covers the host setup (GPU driver, Blackmagic Desktop Video,
+          Docker) and the first run.
+
+          ## Container image
+
+          | | |
+          |---|---|
+          | Image | `@IMAGE@:@VERSION@` (also `latest`) |
+          | Digest | `@DIGEST@` |
+          | mpv | @MPV@ |
+          | libplacebo | @LIBPLACEBO@ |
+          | FFmpeg | @FFMPEG@ |
+
+          To stay on this release, set `VPROC_VERSION=@VERSION@` in `.env`.
+          EOF
+          sed -i \
+            -e "s|@IMAGE@|${IMAGE}|g" -e "s|@VERSION@|${version}|g" -e "s|@DIGEST@|${DIGEST}|g" \
+            -e "s|@MPV@|$(arg MPV_VERSION)|g" -e "s|@LIBPLACEBO@|$(arg LIBPLACEBO_VERSION)|g" \
+            -e "s|@FFMPEG@|$(arg FFMPEG_VERSION)|g" notes.md
+          cat notes.md
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; leaving it unchanged."
+            exit 0
+          fi
+          prerelease=()
+          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "mpv-vproc-web $GITHUB_REF_NAME" \
+            --notes-file notes.md --generate-notes "${prerelease[@]}"
