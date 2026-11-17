@@ -72,8 +72,13 @@ def display_checks(config: Config) -> None:
             check(OK, f"display on {name}", "modes: " + ", ".join(dict.fromkeys(modes)) if modes else "")
     if not connected:
         check(FAIL, "no connected display", "is the projector/TV on and plugged into this GPU?")
-    elif len(connected) > 1 and not config.drm_connector:
-        check(WARN, "several displays connected", f"set VPROC_DRM_CONNECTOR to one of {connected}")
+    elif len(connected) > 1:
+        if config.gpu_context == "displayvk":
+            check(WARN, "several displays connected",
+                  f"vproc uses Vulkan display {config.vulkan_display}; if the picture appears on the wrong one, "
+                  "change VPROC_VULKAN_DISPLAY (0, 1, ...)")
+        elif not config.drm_connector:
+            check(WARN, "several displays connected", f"set VPROC_DRM_CONNECTOR to one of {connected}")
     if config.match_refresh and not config.output_size:
         check(WARN, "refresh-rate matching needs VPROC_OUTPUT_SIZE", "e.g. VPROC_OUTPUT_SIZE=3840x2160")
 

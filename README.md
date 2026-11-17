@@ -1,9 +1,14 @@
-# vproc
+# mpv-vproc-web
 
-A headless HDR video processor built from a Blackmagic DeckLink capture card, mpv and libplacebo.
+A headless HDR video processor built from a DeckLink capture card (Blackmagic Design), mpv and libplacebo.
 It takes HDMI in, tone-maps HDR10/HLG in a style like madVR's (with dynamic per-frame peak detection), scales
 with libplacebo's high-quality filters and drives the display directly through Vulkan. No desktop is needed.
-You control it from a web page or its HTTP API.
+You control it from a web page, its HTTP API, or an Unfolded Circle remote.
+
+> **New here?** Follow **[docs/INSTALL.md](docs/INSTALL.md)**: a step-by-step guide from a fresh Linux
+> install to a picture on your screen, no programming knowledge needed. Then read
+> **[docs/SETTINGS.md](docs/SETTINGS.md)**, which explains every picture setting in plain language: what tone
+> mapping is, how the curves differ, which scaler to pick, and the three settings that matter most.
 
 ```
  source ─HDMI─▶ DeckLink ──▶ dlcap ──FIFO──▶ mpv (gpu-next / libplacebo) ──Vulkan──▶ HDMI ─▶ projector
@@ -24,6 +29,8 @@ You control it from a web page or its HTTP API.
   and serves the UI and API.
 
 ## Host setup (once)
+
+The short version for experienced users; [docs/INSTALL.md](docs/INSTALL.md) has every step with commands.
 
 1. **NVIDIA driver** with kernel modesetting enabled: add `nvidia-drm.modeset=1` to the kernel command line.
    Don't run a desktop on the GPU that feeds the display; vproc needs to own that output.
@@ -60,7 +67,7 @@ The first build compiles FFmpeg, libplacebo and mpv from their pinned release ta
 `LIBPLACEBO_VERSION`, `MPV_VERSION`), which takes a while. To upgrade one, change its version in `.env` and
 rebuild.
 
-`vproc.doctor` checks everything the container depends on: GPU and DRM access, the NVIDIA GBM/Vulkan
+`vproc.doctor` ([explained here](docs/INSTALL.md#the-doctor)) checks everything the container depends on: GPU and DRM access, the NVIDIA GBM/Vulkan
 pieces, connected displays and their modes, the DeckLink library, devices and driver version, and the mpv
 build. For each problem it tells you what to fix on the host.
 
