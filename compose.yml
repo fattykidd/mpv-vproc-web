@@ -26,6 +26,8 @@ services:
     devices:
       - /dev/dri:/dev/dri                  # GPU display output (KMS)
       - /dev/blackmagic:/dev/blackmagic    # DeckLink card(s)
+      # The display's HDMI link status (scripts/enable-ddc.sh); /dev/null when not set up.
+      - ${VPROC_DDC_DEVICE:-/dev/null}:/dev/vproc-ddc
     group_add:
       - "${VIDEO_GID:-44}"
       - "${RENDER_GID:-109}"

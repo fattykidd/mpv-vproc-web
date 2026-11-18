@@ -84,6 +84,7 @@ class Config:
     match_refresh: bool = True
     refresh_map: dict[float, float] = field(default_factory=lambda: dict(DEFAULT_REFRESH_MAP))
     rgb_range: str = "full"  # how to treat RGB input: full | limited
+    ddc_device: Path = Path("/dev/vproc-ddc")  # display's DDC bus, for the HDMI link watch
     mpv_log_level: str = "warn"
     mpv_extra_args: tuple[str, ...] = ()
 

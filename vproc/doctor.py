@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from .config import Config, ConfigError
+from .ddc import DdcBus, is_real_device, link_locked
 
 OK, WARN, FAIL = "ok", "warn", "FAIL"
 results: list[tuple[str, str, str]] = []
@@ -81,6 +82,15 @@ def display_checks(config: Config) -> None:
             check(WARN, "several displays connected", f"set VPROC_DRM_CONNECTOR to one of {connected}")
     if config.match_refresh and not config.output_size:
         check(WARN, "refresh-rate matching needs VPROC_OUTPUT_SIZE", "e.g. VPROC_OUTPUT_SIZE=3840x2160")
+    if is_real_device(config.ddc_device):
+        try:
+            flags = DdcBus(config.ddc_device).status_flags()
+        except OSError as exc:
+            check(WARN, "HDMI link status: the display doesn't answer",
+                  f"is it on? If this persists, run scripts/enable-ddc.sh again ({exc})")
+        else:
+            state = "locked" if link_locked(flags) else "not locked"
+            check(OK, f"HDMI link status readable ({state})", "a lost lock restarts the output automatically")
 
 
 def decklink_checks(config: Config) -> None:

@@ -21,6 +21,7 @@ from .config import Config
 from .mpv import MpvError, MpvProcess, build_args
 from .settings import OPTIONS, PresetStore, Value
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
+from .ddc import DdcBus, is_real_device, link_locked
 from .inputs import InputChoice, check_spec, matches
 from .integrations import RemoteIntegration
 from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
@@ -42,6 +43,11 @@ OBSERVED = (
 # output ("Flip event timeout") without any hotplug event, and mpv waits forever.
 STALL_AFTER = 4.0
 STALL_RETRY = 10.0  # minimum time between restarts while it stays frozen
+# HDMI link watch (see ddc.py): how often to read the display's lock state, how long a
+# freshly started output gets to lock, and how many unlocked readings in a row count.
+LINK_POLL = 2.0
+LINK_GRACE = 6.0
+LINK_UNLOCKED_READINGS = 2
 # dlcap exit codes that mean "fix the setup", not "try again right away".
 SETUP_ERRORS = {2: "Desktop Video driver not available", 3: "capture device not found", 4: "device can't capture"}
 
@@ -84,6 +90,9 @@ class Processor:
         self._capture_stats: dict[str, Any] = {}
         self._stall_since: float | None = None
         self._last_stall_restart = 0.0
+        self._output_since = 0.0
+        self._ddc = DdcBus(config.ddc_device) if is_real_device(config.ddc_device) else None
+        self._link: dict[str, Any] = {"watched": self._ddc is not None, "locked": None}
         self.inputs = InputChoice(config.data_dir / "input.json", config.device)
         self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
@@ -116,6 +125,8 @@ class Processor:
             asyncio.create_task(self._supervise_capture(), name="capture"),
             asyncio.create_task(self._broadcast(), name="broadcast"),
         ]
+        if self._ddc:
+            self._tasks.append(asyncio.create_task(self._watch_hdmi_link(), name="hdmi-link"))
         await self.remote.start()
 
     async def stop(self) -> None:
@@ -161,6 +172,7 @@ class Processor:
                 "delayed_frames": self._props.get("vo-delayed-frame-count"),
                 "video_params": self._props.get("video-out-params"),
                 "target_params": self._props.get("video-target-params"),
+                "hdmi_link": dict(self._link),
             },
             "capture": {
                 "running": bool(self._capture and self._capture.running),
@@ -363,6 +375,7 @@ class Processor:
 
             self._display_mode = mode
             self._output_ready = True
+            self._output_since = time.monotonic()
             backoff.mark_started()
             self._notify()
             await self._sync_output()
@@ -567,6 +580,52 @@ class Processor:
             elif code != 0:
                 self._error("capture", f"dlcap exited with status {code}; restarting")
                 await backoff.sleep()
+
+    async def _watch_hdmi_link(self) -> None:
+        """Restarts the output when the display reports it has lost the signal lock.
+
+        Acts only once the display has been seen locked, so a display that reports its
+        state oddly can't cause a restart loop. While the display stays away (on another
+        input), it retries every STALL_RETRY seconds and reports the problem only once.
+        """
+        assert self._ddc
+        seen_locked = False
+        unlocked = 0
+        reported = False
+        while not self._stopping:
+            await asyncio.sleep(LINK_POLL)
+            if not self._output_ready or time.monotonic() - self._output_since < LINK_GRACE:
+                unlocked = 0
+                continue
+            try:
+                flags = await asyncio.to_thread(self._ddc.status_flags)
+            except OSError:
+                # Off, in standby or not answering: nothing to judge.
+                unlocked = 0
+                self._set_link(None)
+                continue
+            if link_locked(flags):
+                seen_locked, unlocked, reported = True, 0, False
+                self._set_link(True)
+                continue
+            self._set_link(False)
+            unlocked += 1
+            clock = time.monotonic()
+            if not seen_locked or unlocked < LINK_UNLOCKED_READINGS or clock - self._last_stall_restart < STALL_RETRY:
+                continue
+            unlocked = 0
+            self._last_stall_restart = clock
+            if reported:
+                log.info("the display is still not locked onto the signal; restarting the output again")
+            else:
+                self._error("output", "the display lost the HDMI signal (did it switch inputs?); restarting the output")
+                reported = True
+            await self.restart_output()
+
+    def _set_link(self, locked: bool | None) -> None:
+        if self._link["locked"] != locked:
+            self._link["locked"] = locked
+            self._notify()
 
     def _check_output_stall(self, before: dict[str, Any], now: dict[str, Any]) -> None:
         """Restarts the output when frames keep arriving but mpv has stopped taking them."""

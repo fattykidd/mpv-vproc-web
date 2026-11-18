@@ -555,6 +555,30 @@ Changes apply instantly and are saved to the preset you're editing.
 including how long each frame takes to render. If frames are dropped (the web page's **Dropped** count rises),
 choose lighter scalers; [SETTINGS.md](SETTINGS.md#scaling) explains which ones.
 
+### HDMI link watch (optional)
+
+Some projectors and TVs lose the picture when they switch to another input and back, or wake from standby:
+the screen stays black until you press **Restart output**. It happens at 4K 50/60 Hz, where HDMI 2.0 uses a
+signal mode (scrambling) the display forgets on such a switch, and it doesn't tell the graphics card.
+
+Displays like that do report whether they're locked onto the signal, over a small channel in the HDMI cable.
+With the link watch set up, vproc reads it every 2 seconds and restarts the output by itself when the lock is
+lost. One-time setup, in the mpv-vproc-web folder, with the display on and showing the picture:
+
+```sh
+cd ~/mpv-vproc-web
+curl -fsSLO https://raw.githubusercontent.com/fattykidd/mpv-vproc-web/main/scripts/enable-ddc.sh
+sudo dnf install i2c-tools          # Ubuntu / Debian: sudo apt install i2c-tools
+sudo bash enable-ddc.sh
+docker compose up -d
+```
+
+The script finds which of the graphics card's outputs the display answers on, makes it readable for the video group
+as `/dev/vproc-ddc`, and adds `VPROC_DDC_DEVICE=/dev/vproc-ddc` to `.env`. It only reads from the display. The doctor
+then shows `HDMI link status readable (locked)`, and the web page's **Output** panel shows **HDMI link: Locked**.
+
+If you move the HDMI cable to another output of the graphics card, run `sudo bash enable-ddc.sh` again.
+
 ---
 
 ## 11. Unfolded Circle Remote (optional)
@@ -667,7 +691,7 @@ Start with the doctor (step 9). Beyond that, these are the problems seen so far:
 | Black screen, log says `no video output came up` | Something else is using the display (desktop, an old mpv service) or modesetting is off | Step 2 and step 3; `pgrep -a mpv` should print nothing outside the container |
 | Picture works but the log says `the display has no …@23.976 mode` | The display doesn't support that refresh rate | Normal for PC monitors; projectors and TVs usually do support it |
 | **NO SIGNAL** although the source is playing | The source uses HDCP copy protection (most streaming boxes, UHD Blu-ray players), or the card's input is set to SDI | HDCP isn't supported (see [step 1](#1-what-you-need)); try another source or turn HDCP off in the source's settings if it has that option. For the input, see [Choose the card's input](#choose-the-cards-input) |
-| Picture doesn't come back after the projector or TV switched inputs or woke from standby | The graphics card stops completing frames on that output, and mpv waits forever | vproc notices within about 5 seconds (`the display stopped taking frames`) and restarts the output by itself. If it doesn't, press **Restart output** under Tools and report it |
+| Picture doesn't come back after the projector or TV switched inputs or woke from standby | At 4K 50/60 Hz the display forgets the HDMI 2.0 link setup, without telling the graphics card | Set up the [HDMI link watch](#hdmi-link-watch-optional) and vproc restores the picture by itself within a few seconds. Until then, press **Restart output** under Tools (or on the remote) |
 | `capture device not found` / `no DeckLink devices found` | Card firmware out of date, or the capture card was swapped or added | [Update the firmware](#update-the-cards-firmware); after changing cards, `docker compose up -d --force-recreate` |
 | `could not enable video input` | Another program has the capture card open (Media Express, OBS, another container) | Close it |
 | `Desktop Video driver not available` | The capture library path is wrong | `DECKLINK_LIB` in `.env` (step 4/8) |

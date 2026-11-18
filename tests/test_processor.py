@@ -308,3 +308,81 @@ def test_restarts_an_output_that_stops_taking_frames(tmp_path, monkeypatch):
             await h.processor.stop()
 
     run(scenario())
+
+
+class FakeDdc:
+    """The display's SCDC status: locked, until `lost` is set; never answering while `off`."""
+
+    def __init__(self):
+        self.lost = False
+        self.off = False
+        self.reads = 0
+
+    def status_flags(self) -> int:
+        self.reads += 1
+        if self.off:
+            raise OSError("no answer")
+        return 0x01 if self.lost else 0x0F
+
+
+def test_restarts_the_output_when_the_display_loses_the_hdmi_lock(tmp_path, monkeypatch):
+    import vproc.processor as processor_module
+
+    monkeypatch.setattr(processor_module, "LINK_POLL", 0.1)
+    monkeypatch.setattr(processor_module, "LINK_GRACE", 0.3)
+    monkeypatch.setattr(processor_module, "STALL_RETRY", 1.0)
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch)
+    ddc = FakeDdc()
+    h.processor._ddc = ddc
+    starts = lambda: len(h.entries(event="start"))  # noqa: E731
+    link = lambda: h.processor.status()["output"]["hdmi_link"]["locked"]  # noqa: E731
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
+            await h.until(lambda: link() is True, what="a locked link")
+            before = starts()
+
+            # Switched off or in standby: no answer, so no action.
+            ddc.off = True
+            await h.until(lambda: link() is None, what="the display not answering")
+            await asyncio.sleep(1.5)
+            assert starts() == before
+            ddc.off = False
+
+            # The projector switched inputs and came back without its lock.
+            ddc.lost = True
+            await h.until(lambda: starts() > before, what="the output restart")
+            assert any("lost the HDMI signal" in e["message"] for e in h.processor.status()["errors"])
+            ddc.lost = False
+            await h.until(lambda: link() is True, what="the link locked again")
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_a_display_never_seen_locked_is_left_alone(tmp_path, monkeypatch):
+    import vproc.processor as processor_module
+
+    monkeypatch.setattr(processor_module, "LINK_POLL", 0.1)
+    monkeypatch.setattr(processor_module, "LINK_GRACE", 0.3)
+    monkeypatch.setattr(processor_module, "STALL_RETRY", 0.5)
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch)
+    ddc = FakeDdc()
+    ddc.lost = True  # reports "not locked" even while the picture is fine
+    h.processor._ddc = ddc
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
+            started = len(h.entries(event="start"))
+            reads = ddc.reads
+            await h.until(lambda: ddc.reads > reads + 10, what="several readings")
+            assert len(h.entries(event="start")) == started
+        finally:
+            await h.processor.stop()
+
+    run(scenario())

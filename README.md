@@ -159,6 +159,7 @@ likely to touch:
 |---|---|---|
 | `VPROC_OUTPUT_SIZE` | – | Display resolution; enables refresh-rate matching |
 | `VPROC_DEVICE` | `0` | Which DeckLink input |
+| `VPROC_DDC_DEVICE` | – | Host path of the display's DDC bus (`/dev/vproc-ddc`, set up by `scripts/enable-ddc.sh`): restarts the output when the display loses the HDMI lock |
 | `VPROC_DISPLAY_MODE` | `preferred` | Mode used when refresh matching doesn't apply; `preferred` means the output size at its highest rate, or the display's own preference without `VPROC_OUTPUT_SIZE` |
 | `VPROC_VULKAN_DISPLAY` | `0` | Which display, if the GPU has several connected |
 | `VPROC_GPU_API` / `VPROC_GPU_CONTEXT` | `vulkan` / `displayvk` | `opengl` / `drm` as an alternative |
