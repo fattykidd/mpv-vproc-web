@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# Refuses to push a release tag that doesn't match the version in the code, before
+# GitHub's release build finds out. Enable once per clone:
+#
+#   git config core.hooksPath git-hooks
+#
+# Same idea as the Unfolded Circle integration template's pre-push hook.
+
+set -euo pipefail
+
+code_version() {
+    sed -nE 's/^__version__ = "([^"]+)"$/\1/p' vproc/__init__.py
+}
+
+example_version() {
+    sed -nE 's/^#?VPROC_VERSION=(.+)$/\1/p' .env.example | head -n 1
+}
+
+while read -r local_ref _local_sha _remote_ref _remote_sha; do
+    [[ "$local_ref" == refs/tags/v* ]] || continue
+    tag=${local_ref#refs/tags/}
+    version=$(code_version)
+    example=$(example_version)
+
+    if [[ "${tag#v}" != "$version" ]]; then
+        echo "❌ Tag $tag doesn't match __version__ $version in vproc/__init__.py."
+        echo "   Use scripts/release.sh ${tag#v} to bump the version and tag together."
+        exit 1
+    fi
+    if [[ "$example" != "$version" ]]; then
+        echo "❌ .env.example shows VPROC_VERSION=$example, but the version is $version."
+        exit 1
+    fi
+    echo "✅ Version check passed for $tag"
+done

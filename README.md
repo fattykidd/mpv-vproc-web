@@ -195,6 +195,19 @@ DLCAP_BIN=capture/dlcap pytest
 
 Build with `-DMOCK_DECKLINK_API_VERSION=0x0e030000` to test the SDK 14.3+ frame API as well; CI runs both.
 
+### Releasing
+
+The version lives in `vproc/__init__.py` (the example in `.env.example` follows it). Pushing a tag `vX.Y.Z` builds
+the image and creates the GitHub release; the build refuses a tag that doesn't match the version.
+
+```sh
+git config core.hooksPath git-hooks   # once per clone: checks the version before a tag is pushed
+scripts/release.sh 0.3.0              # sets the version, commits "Version 0.3.0", tags v0.3.0
+git push origin main && git push origin v0.3.0
+```
+
+A version with a suffix (`0.3.0-rc1`) is published as a pre-release.
+
 ## License and credits
 
 The code in this repository is released under the MIT License (see `LICENSE`). The container image also
