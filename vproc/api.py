@@ -107,6 +107,15 @@ def create_app(config: Config) -> FastAPI:
 
     app.mount("/assets", StaticFiles(directory=config.web_dir), name="assets")
 
+    @app.middleware("http")
+    async def revalidate_assets(request: Request, call_next):
+        # Without this, browsers keep using an old app.js/style.css after an update.
+        # Revalidating is cheap: unchanged files get a 304 thanks to their ETag.
+        response = await call_next(request)
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     @app.get("/healthz", include_in_schema=False)
     async def health() -> dict[str, Any]:
         s = processor.status()

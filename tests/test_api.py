@@ -45,7 +45,9 @@ def wait_for_playing(client, timeout=15):
 def test_ui_and_health_need_no_token(client):
     anon = TestClient(client.app)
     assert anon.get("/").status_code == 200
-    assert anon.get("/assets/app.js").status_code == 200
+    assets = anon.get("/assets/app.js")
+    assert assets.status_code == 200
+    assert assets.headers["cache-control"] == "no-cache"  # so an update reaches the browser
     assert anon.get("/healthz").json()["ok"] is True
     assert anon.get("/api/status").status_code == 401
 
