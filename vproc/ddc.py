@@ -18,8 +18,11 @@ import os
 import stat
 from pathlib import Path
 
-I2C_RDWR = 0x0707
-I2C_M_RD = 0x0001
+# From linux/i2c-dev.h and linux/i2c.h.
+I2C_SLAVE = 0x0703
+I2C_SMBUS = 0x0720
+I2C_SMBUS_READ = 1
+I2C_SMBUS_BYTE_DATA = 2
 EDID_ADDRESS = 0x50
 SCDC_ADDRESS = 0x54
 SCDC_SINK_VERSION = 0x01
@@ -28,17 +31,17 @@ SCDC_STATUS_FLAGS = 0x40
 CHANNELS_LOCKED = 0x0E  # Ch0, Ch1 and Ch2 locked (bit 0 is "clock detected")
 
 
-class _Message(ctypes.Structure):
+class _SmbusData(ctypes.Union):
+    _fields_ = [("byte", ctypes.c_uint8), ("word", ctypes.c_uint16), ("block", ctypes.c_uint8 * 34)]
+
+
+class _SmbusTransfer(ctypes.Structure):
     _fields_ = [
-        ("addr", ctypes.c_uint16),
-        ("flags", ctypes.c_uint16),
-        ("len", ctypes.c_uint16),
-        ("buf", ctypes.POINTER(ctypes.c_uint8)),
+        ("read_write", ctypes.c_uint8),
+        ("command", ctypes.c_uint8),
+        ("size", ctypes.c_uint32),
+        ("data", ctypes.POINTER(_SmbusData)),
     ]
-
-
-class _Transfer(ctypes.Structure):
-    _fields_ = [("msgs", ctypes.POINTER(_Message)), ("nmsgs", ctypes.c_uint32)]
 
 
 def is_real_device(path: Path) -> bool:
@@ -55,25 +58,24 @@ def link_locked(status_flags: int) -> bool:
 
 
 class DdcBus:
-    """One I2C bus; every read is a single write-offset/read-byte transfer."""
+    """One I2C bus, read with SMBus "read byte data" transfers, the same as i2cget.
+
+    (A combined I2C_RDWR write-then-read returned wrong values on NVIDIA's DDC buses.)
+    """
 
     def __init__(self, path: Path):
         self.path = path
 
     def read(self, address: int, offset: int) -> int:
-        out = (ctypes.c_uint8 * 1)(offset)
-        into = (ctypes.c_uint8 * 1)()
-        messages = (_Message * 2)(
-            _Message(address, 0, 1, out),
-            _Message(address, I2C_M_RD, 1, into),
-        )
-        transfer = _Transfer(messages, 2)
+        data = _SmbusData()
+        transfer = _SmbusTransfer(I2C_SMBUS_READ, offset, I2C_SMBUS_BYTE_DATA, ctypes.pointer(data))
         fd = os.open(self.path, os.O_RDWR)
         try:
-            fcntl.ioctl(fd, I2C_RDWR, transfer)
+            fcntl.ioctl(fd, I2C_SLAVE, address)
+            fcntl.ioctl(fd, I2C_SMBUS, transfer)
         finally:
             os.close(fd)
-        return into[0]
+        return data.byte
 
     def status_flags(self) -> int:
         """SCDC status flags. Raises OSError when the display doesn't answer (off, standby, no SCDC)."""
