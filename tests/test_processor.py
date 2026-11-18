@@ -287,3 +287,24 @@ def test_output_size_the_display_lacks_falls_back_to_preferred(tmp_path, monkeyp
             await h.processor.stop()
 
     run(scenario())
+
+
+def test_restarts_an_output_that_stops_taking_frames(tmp_path, monkeypatch):
+    # The first mpv freezes after 20 frames, like real mpv when the projector switches inputs.
+    monkeypatch.setenv("FAKE_MPV_FREEZE", str(tmp_path / "froze"))
+    h = Harness(tmp_path, "2160p23976:yuv10:sdr:100000", monkeypatch)
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="frozen"), what="the frozen output")
+            first_pid = h.entries(event="frozen")[0]["pid"]
+            await h.until(lambda: [e for e in h.entries(event="frames", frames=10) if e["pid"] != first_pid],
+                          timeout=20, what="playback on a restarted mpv")
+            assert any("stopped taking frames" in e["message"] for e in h.processor.status()["errors"])
+            # Same mode as before: only the output was restarted.
+            assert [e["mode"] for e in h.entries(event="start")][-2:] == ["3840x2160@23.976"] * 2
+        finally:
+            await h.processor.stop()
+
+    run(scenario())

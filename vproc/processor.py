@@ -37,6 +37,11 @@ OBSERVED = (
     "decoder-frame-drop-count",
     "vo-delayed-frame-count",
 )
+# A frozen output: frames keep arriving but mpv hasn't taken one for this long. Seen when a
+# projector switches to another input: the NVIDIA driver stops completing frames on that
+# output ("Flip event timeout") without any hotplug event, and mpv waits forever.
+STALL_AFTER = 4.0
+STALL_RETRY = 10.0  # minimum time between restarts while it stays frozen
 # dlcap exit codes that mean "fix the setup", not "try again right away".
 SETUP_ERRORS = {2: "Desktop Video driver not available", 3: "capture device not found", 4: "device can't capture"}
 
@@ -77,6 +82,8 @@ class Processor:
         self._colorimetry: Colorimetry | None = None
         self._capture_info: dict[str, Any] = {}
         self._capture_stats: dict[str, Any] = {}
+        self._stall_since: float | None = None
+        self._last_stall_restart = 0.0
         self.inputs = InputChoice(config.data_dir / "input.json", config.device)
         self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
@@ -561,6 +568,25 @@ class Processor:
                 self._error("capture", f"dlcap exited with status {code}; restarting")
                 await backoff.sleep()
 
+    def _check_output_stall(self, before: dict[str, Any], now: dict[str, Any]) -> None:
+        """Restarts the output when frames keep arriving but mpv has stopped taking them."""
+        playing = self._output_ready and self._signal and self._loaded_segment is not None
+        arriving = now.get("captured", 0) > before.get("captured", 0)
+        taken = now.get("written", 0) > before.get("written", 0)
+        if not playing or not arriving or taken:
+            self._stall_since = None
+            return
+        clock = time.monotonic()
+        if self._stall_since is None:
+            self._stall_since = clock
+            return
+        if clock - self._stall_since < STALL_AFTER or clock - self._last_stall_restart < STALL_RETRY:
+            return
+        self._stall_since = None
+        self._last_stall_restart = clock
+        self._error("output", "the display stopped taking frames (did it switch inputs?); restarting the output")
+        asyncio.create_task(self.restart_output(), name="stall-restart")
+
     async def _on_capture_event(self, event: dict[str, Any]) -> None:
         name = event.get("event")
         if name == "segment":
@@ -583,7 +609,9 @@ class Processor:
                 self._loaded_segment = None
             self._notify()
         elif name == "stats":
+            previous = self._capture_stats
             self._capture_stats = {k: v for k, v in event.items() if k != "event"}
+            self._check_output_stall(previous, self._capture_stats)
             self._notify()
         elif name == "hello":
             self._capture_info.update(version=event.get("version"), driver=event.get("driver"))

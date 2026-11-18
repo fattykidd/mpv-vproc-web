@@ -6,6 +6,8 @@ FAKE_MPV_LOG        append a JSON line per notable action to this file
 FAKE_MPV_BAD_MODES  comma-separated modes that "fail" (no VO)
 FAKE_MPV_MODES      the display's modes for --vulkan-display-mode, as WxH@RATE,...
 FAKE_MPV_VO_DELAY   seconds before the video output comes up
+FAKE_MPV_FREEZE     path of a marker file: the first fake mpv to play 20 frames creates it and
+                    stops reading, like real mpv stuck on a display that went away
 """
 
 import asyncio
@@ -85,6 +87,11 @@ class Reader(threading.Thread):
                     reason = "error"
                     break
                 self.frames += 1
+                if self.frames == 20 and _claim_freeze():
+                    record(event="frozen", path=self.path)
+                    while not self.stop_flag:
+                        threading.Event().wait(0.05)
+                    break
                 if self.frames in (1, 10, 50):
                     step = struct.unpack_from("<Q", buf, 8)[0]
                     record(event="frames", path=self.path, frames=self.frames, step=step)
@@ -203,6 +210,17 @@ class FakeMpv:
             await self.done.wait()
         self.stop_reader()
         record(event="exit")
+
+
+def _claim_freeze() -> bool:
+    marker = os.environ.get("FAKE_MPV_FREEZE")
+    if not marker:
+        return False
+    try:
+        os.close(os.open(marker, os.O_CREAT | os.O_EXCL))
+        return True
+    except FileExistsError:
+        return False
 
 
 if __name__ == "__main__":
