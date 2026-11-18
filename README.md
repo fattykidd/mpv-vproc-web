@@ -171,6 +171,12 @@ likely to touch:
   `nvidia-drm.modeset=1` is set on the host and that nothing else (a desktop, another mpv) holds the
   display. To see the modes the display offers, stop vproc and run
   `docker compose run --rm --entrypoint mpv vproc --no-config --vo=gpu-next --gpu-api=vulkan --gpu-context=displayvk --vulkan-display-mode=help`.
+* **Black screen after the projector or TV switched inputs, or was turned off and on**: at 4K 50/60 Hz some
+  displays forget the HDMI 2.0 link setup without telling the graphics card. Set up the HDMI link watch
+  (`sudo bash scripts/enable-ddc.sh`, see [docs/INSTALL.md](docs/INSTALL.md#hdmi-link-watch-optional)) and vproc
+  restores the picture by itself; until then, **Restart output** brings it back.
+* **Picture freezes**: if mpv stops taking frames for a few seconds while the source keeps sending, vproc restarts
+  the output by itself (`the display stopped taking frames` in the log). If it keeps happening, report it.
 * **"Desktop Video driver not available"**: `DECKLINK_LIB` doesn't point at the host's `libDeckLinkAPI.so`,
   or the driver isn't loaded (`lsmod | grep blackmagic`).
 * **"could not enable video input"**: another program (Media Express, OBS, a second container) has the input open.

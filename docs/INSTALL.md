@@ -563,7 +563,11 @@ signal mode (scrambling) the display forgets on such a switch, and it doesn't te
 
 Displays like that do report whether they're locked onto the signal, over a small channel in the HDMI cable.
 With the link watch set up, vproc reads it every 2 seconds and restarts the output by itself when the lock is
-lost. One-time setup, in the mpv-vproc-web folder, with the display on and showing the picture:
+lost: the picture comes back a few seconds after the display returns to this input, or after it's turned off
+and on again. (Tested with a 4K projector on an NVIDIA RTX 5060 Ti; displays without HDMI 2.0 status reporting are
+detected by the setup script and simply left alone.)
+
+One-time setup, in the mpv-vproc-web folder, with the display on and showing the picture:
 
 ```sh
 cd ~/mpv-vproc-web
