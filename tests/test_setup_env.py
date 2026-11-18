@@ -75,3 +75,11 @@ def test_outdated_firmware_is_a_problem(host):
     result = run(host)
     assert result.returncode == 1
     assert "firmware needs updating" in result.stdout
+
+
+def test_prefers_the_largest_16x9_mode_over_the_displays_preference(host):
+    # Like many 4K projectors: 1080p first, cinema 4K (4096 wide) offered too.
+    (host / "drm" / "card1-HDMI-A-1" / "modes").write_text("1920x1080\n4096x2160\n3840x2160\n1280x720\n")
+    result = run(host)
+    assert env_values(host / ".env")["VPROC_OUTPUT_SIZE"] == "3840x2160"
+    assert "names 1920x1080 as its preferred mode" in result.stdout

@@ -87,8 +87,9 @@ calibrated mode. Set *Display primaries* / *Display transfer* to the gamut and g
 else. *Visualize curve* draws the tone curve and the measured peak over the picture.
 
 **Refresh-rate matching.** With `VPROC_OUTPUT_SIZE` set, the display mode follows the source: 23.976 → 23.976 Hz,
-25 → 50 Hz, and so on (`VPROC_REFRESH_MAP`). If the display rejects a mode, vproc falls back to
-`VPROC_DISPLAY_MODE`, remembers that and reports it in the UI. vproc reads the display's mode list, so a
+25 → 50 Hz, and so on (`VPROC_REFRESH_MAP`). Without a signal, or if the display rejects a mode, vproc
+uses the output size at its highest refresh rate (or `VPROC_DISPLAY_MODE` if set), not the display's own
+"preferred" mode, which on many 4K projectors is 1080p. Rejected modes are remembered and reported in the UI. vproc reads the display's mode list, so a
 mode the display doesn't offer (PC monitors rarely do 23.976 Hz) is skipped without a restart. Changing modes restarts mpv, which takes
 about a second of black.
 
@@ -158,7 +159,7 @@ likely to touch:
 |---|---|---|
 | `VPROC_OUTPUT_SIZE` | – | Display resolution; enables refresh-rate matching |
 | `VPROC_DEVICE` | `0` | Which DeckLink input |
-| `VPROC_DISPLAY_MODE` | `preferred` | Mode used when refresh matching doesn't apply |
+| `VPROC_DISPLAY_MODE` | `preferred` | Mode used when refresh matching doesn't apply; `preferred` means the output size at its highest rate, or the display's own preference without `VPROC_OUTPUT_SIZE` |
 | `VPROC_VULKAN_DISPLAY` | `0` | Which display, if the GPU has several connected |
 | `VPROC_GPU_API` / `VPROC_GPU_CONTEXT` | `vulkan` / `displayvk` | `opengl` / `drm` as an alternative |
 | `VPROC_API_TOKEN` | – | Protects the API |

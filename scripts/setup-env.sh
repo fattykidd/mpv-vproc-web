@@ -34,6 +34,12 @@ set_var() {
 
 gid_of() { getent group "$1" | cut -d: -f3; }
 
+# The largest 16:9 mode in a connector's mode list. Video is 16:9, and a display's
+# "preferred" mode can be lower (many 4K projectors prefer 1080p) or wider (4096x2160).
+largest_16x9() {
+    awk -Fx '$1 * 9 == $2 * 16 && $1 * $2 > best { best = $1 * $2; mode = $0 } END { print mode }' "$1" 2>/dev/null
+}
+
 echo "Preparing $ENV_FILE"
 if [ ! -f "$TEMPLATE" ]; then
     curl -fsSL -o "$TEMPLATE" "$TEMPLATE_URL"
@@ -88,9 +94,14 @@ else
              "if that's not your projector/TV, change VPROC_OUTPUT_SIZE in .env, and set VPROC_VULKAN_DISPLAY if the picture appears on the wrong one"
     fi
     port=$(basename "${connected[0]}"); port=${port#card*-}
-    size=$(head -n 1 "${connected[0]}/modes" 2>/dev/null || true)
+    preferred=$(head -n 1 "${connected[0]}/modes" 2>/dev/null || true)
+    size=$(largest_16x9 "${connected[0]}/modes")
+    size=${size:-$preferred}
     if [ -n "$size" ]; then
         set_var VPROC_OUTPUT_SIZE "$size"; ok "$port: $size"
+        if [ "$size" != "$preferred" ]; then
+            echo "        (the display names $preferred as its preferred mode, but offers $size)"
+        fi
     else
         warn "$port is connected but reports no modes" "set VPROC_OUTPUT_SIZE in .env by hand"
     fi

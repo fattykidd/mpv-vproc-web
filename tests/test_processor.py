@@ -95,7 +95,8 @@ def test_mode_the_display_lacks_falls_back(tmp_path, monkeypatch):
             status = h.processor.status()
             assert status["output"]["unsupported_modes"] == ["3840x2160@23.976"]
             assert any("has no 3840x2160@23.976 mode" in e["message"] for e in status["errors"])
-            assert [e["mode"] for e in h.entries(event="start")] == ["preferred"]
+            # Falls back to the output size at its highest rate, not the display's own preference.
+            assert [e["mode"] for e in h.entries(event="start")] == ["3840x2160@60"]
         finally:
             await h.processor.stop()
 
@@ -111,7 +112,7 @@ def test_drm_mode_that_fails_falls_back(tmp_path, monkeypatch):
         try:
             await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
             assert h.processor.status()["output"]["unsupported_modes"] == ["3840x2160@23.976"]
-            assert h.entries(event="start")[-1]["mode"] == "preferred"
+            assert h.entries(event="start")[-1]["mode"] == "3840x2160"
         finally:
             await h.processor.stop()
 
@@ -199,7 +200,7 @@ def test_mode_switch_waits_for_mpv_to_finish_starting(tmp_path, monkeypatch):
         try:
             await h.until(lambda: h.entries(event="frames", frames=10), what="playback")
             modes = [e["mode"] for e in h.entries(event="start")]
-            assert modes == ["preferred", "1920x1080@23.976"]
+            assert modes == ["1920x1080@60", "1920x1080@23.976"]
             assert h.processor.status()["errors"] == []
         finally:
             await h.processor.stop()
@@ -250,6 +251,38 @@ def test_choosing_an_input_ends_the_wait_after_a_missing_device(tmp_path, monkey
             await h.processor.select_input("id:1001")
             # Well within the 30 s retry wait.
             await h.until(lambda: (capture()["device"] or {}).get("index") == 1, timeout=5, what="the chosen input")
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_starts_at_the_output_size_when_the_display_prefers_less(tmp_path, monkeypatch):
+    # Like many 4K projectors: 1080p is first ("preferred") in the mode list.
+    monkeypatch.setenv("FAKE_MPV_MODES", "1920x1080@60,3840x2160@60,3840x2160@23.976,1920x1080@23.976")
+    h = Harness(tmp_path, "nosignal:100000", monkeypatch)
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="start"), what="mpv start")
+            assert h.entries(event="start")[0]["mode"] == "3840x2160@60"
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_output_size_the_display_lacks_falls_back_to_preferred(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_MPV_MODES", "1920x1080@60,1920x1080@50")
+    h = Harness(tmp_path, "nosignal:100000", monkeypatch)  # VPROC_OUTPUT_SIZE says 3840x2160
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: h.entries(event="start"), what="mpv start")
+            assert [e["mode"] for e in h.entries(event="start")] == ["preferred"]
+            assert any("has no 3840x2160 mode" in e["message"] for e in h.processor.status()["errors"])
         finally:
             await h.processor.stop()
 

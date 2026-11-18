@@ -436,11 +436,13 @@ getent group video render
 ```
 This prints something like `video:x:39:...` and `render:x:105:`. The numbers after the second colon are the IDs.
 
-**Your display's resolution** (the first mode listed is the display's preferred one):
+**Your display's resolution**: the largest 16:9 size it offers.
 ```sh
-cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | head -n 1
+cat /sys/class/drm/card*-HDMI-A-*/modes 2>/dev/null | sort -u
 ```
-For a 4K projector this is `3840x2160`. Use `DP` instead of `HDMI-A` if your display is connected by DisplayPort.
+For a 4K projector or TV this is `3840x2160`. Don't go by the first line: many 4K projectors list `1920x1080` first
+as their "preferred" mode. Choose `3840x2160` rather than the wider cinema `4096x2160` if both are listed. Use `DP`
+instead of `HDMI-A` if your display is connected by DisplayPort.
 
 **The capture library path** from step 4.
 
@@ -530,8 +532,8 @@ Shows what mpv-vproc-web is doing as it happens (press **Ctrl+C** to stop watchi
 lines to look for:
 - `starting mpv: …` and `starting dlcap: …`: the video output and the capture program started.
 - `playing segment 1: 2160p23.976 · HDR10 · …`: a source was detected and is being shown.
-- `the display has no 3840x2160@23.976 mode; using preferred instead`: your display can't switch to the
-  source's frame rate, so it stays at its default. Normal for PC monitors, which rarely support 23.976/24 Hz.
+- `the display has no 3840x2160@23.976 mode; using 3840x2160 instead`: your display can't switch to the
+  source's frame rate, so it stays at its usual one. Normal for PC monitors, which rarely support 23.976/24 Hz.
 
 ---
 

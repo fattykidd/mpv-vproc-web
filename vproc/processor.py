@@ -81,9 +81,9 @@ class Processor:
         self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
         # Output state.
-        self._display_mode = config.display_mode
         self._vulkan_modes: list[DisplayMode] = []
         self._bad_modes: set[str] = set()
+        self._display_mode = self._home_mode
         self._given_upto = 0  # highest segment id handed to an mpv reader
         self._loaded_segment: int | None = None
         self._loaded_entry: int | None = None
@@ -255,13 +255,27 @@ class Processor:
         """Whether vproc picks the display mode (direct-to-display outputs only)."""
         return self.config.gpu_context in {"displayvk", "drm"}
 
+    @property
+    def _home_mode(self) -> str:
+        """The mode to use when the source doesn't decide one.
+
+        VPROC_DISPLAY_MODE if set; otherwise the output size at its highest refresh rate, because a display's
+        own "preferred" mode can be lower (many 4K projectors prefer 1080p); "preferred" as the last resort.
+        """
+        if self.config.display_mode != "preferred":
+            return self.config.display_mode
+        if self.config.output_size and self.config.output_size not in self._bad_modes:
+            return self.config.output_size
+        return "preferred"
+
     def _desired_mode(self) -> str:
         if not (self._switches_modes and self.config.match_refresh):
-            return self.config.display_mode
+            return self._home_mode
         if not (self._signal and self._segment):
-            return self._display_mode  # keep whatever is showing; avoid needless mode switches
-        mode = display_mode_for(self._segment, self.config.output_size, self.config.refresh_map, self.config.display_mode)
-        return self.config.display_mode if mode in self._bad_modes else mode
+            # Keep whatever is showing, to avoid needless mode switches; unless it turned out not to work.
+            return self._home_mode if self._display_mode in self._bad_modes else self._display_mode
+        mode = display_mode_for(self._segment, self.config.output_size, self.config.refresh_map, self._home_mode)
+        return self._home_mode if mode in self._bad_modes else mode
 
     async def _vulkan_mode_index(self, mode: str) -> int | None:
         """Index of a mode in the display's list; None means mpv's default.
@@ -288,7 +302,7 @@ class Processor:
 
     def _reject_mode(self, mode: str) -> None:
         self._bad_modes.add(mode)
-        self._error("output", f"the display has no {mode} mode; using {self.config.display_mode} instead")
+        self._error("output", f"the display has no {mode} mode; using {self._home_mode} instead")
 
     async def _supervise_output(self) -> None:
         backoff = Backoff()
@@ -334,7 +348,7 @@ class Processor:
                     return
                 if mode != self.config.display_mode:
                     self._bad_modes.add(mode)
-                    self._error("output", f"display mode {mode} failed; using {self.config.display_mode} instead")
+                    self._error("output", f"display mode {mode} failed; using {self._home_mode} instead")
                     continue
                 self._error("output", f"mpv failed to start: {exc}")
                 await backoff.sleep()
