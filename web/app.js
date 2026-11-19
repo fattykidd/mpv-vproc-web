@@ -136,6 +136,7 @@ function renderStatus(s) {
     ["Rendering", o.estimated_fps ? `${fmt(o.estimated_fps, 2)} fps` : null],
     ["Target", target.primaries ? `${target.primaries} · ${target.gamma}${target["max-luma"] ? ` · ${fmt(target["max-luma"], 0)} nits` : ""}` : null],
     ["Dropped", String(drops), drops > 0],
+    o.latency_ms != null && ["Latency", `≈ ${o.latency_ms} ms (vproc only)`],
     o.hdmi_link?.watched && ["HDMI link",
       o.hdmi_link.locked == null ? "No answer" : o.hdmi_link.locked ? "Locked" : "Not locked", o.hdmi_link.locked === false],
   ]);

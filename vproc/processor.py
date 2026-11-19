@@ -173,6 +173,7 @@ class Processor:
                 "video_params": self._props.get("video-out-params"),
                 "target_params": self._props.get("video-target-params"),
                 "hdmi_link": dict(self._link),
+                "latency_ms": self._processing_latency_ms(),
             },
             "capture": {
                 "running": bool(self._capture and self._capture.running),
@@ -626,6 +627,23 @@ class Processor:
         if self._link["locked"] != locked:
             self._link["locked"] = locked
             self._notify()
+
+    def _processing_latency_ms(self) -> int | None:
+        """vproc's own delay from the capture card to the display, estimated.
+
+        One source frame to arrive whole before the card hands it over, the frames
+        waiting in dlcap's queue, then mpv rendering and presenting at the next
+        display refresh. It can't include the source's or the display's own
+        processing; measuring the whole chain needs a light sensor at the screen.
+        """
+        segment = self._segment
+        if not (self._signal and segment and self._loaded_segment is not None and segment.fps_num):
+            return None
+        frame_ms = 1000 * segment.fps_den / segment.fps_num
+        display_fps = self._props.get("display-fps") or 0
+        refresh_ms = 1000 / display_fps if display_fps > 0 else frame_ms
+        queued = self._capture_stats.get("queue", 0)
+        return round(frame_ms * (1 + queued) + refresh_ms)
 
     def _check_output_stall(self, before: dict[str, Any], now: dict[str, Any]) -> None:
         """Restarts the output when frames keep arriving but mpv has stopped taking them."""

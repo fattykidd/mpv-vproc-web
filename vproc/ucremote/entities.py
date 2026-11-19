@@ -18,6 +18,8 @@ SHOW_INFO = "show_info"
 STATS = "stats_overlay"
 RESTART_OUTPUT = "restart_output"
 CAPTURE_INPUT = "capture_input"
+DROPPED = "dropped_frames"
+LATENCY = "processing_latency"
 
 NAMES: dict[str, str] = {
     PRESET: "Picture preset",
@@ -28,6 +30,8 @@ NAMES: dict[str, str] = {
     STATS: "Stats overlay",
     RESTART_OUTPUT: "Restart video output",
     CAPTURE_INPUT: "Capture input",
+    DROPPED: "Dropped frames",
+    LATENCY: "Processing latency",
 }
 
 # Attribute keys and state values, as the Integration API spells them.
@@ -73,6 +77,20 @@ def input_selector(status: dict[str, Any], name: str) -> str | None:
     return None
 
 
+def frames_text(status: dict[str, Any]) -> str:
+    """Frames mpv dropped, and frames the capture side skipped because mpv fell behind."""
+    output = status.get("output") or {}
+    stats = (status.get("capture") or {}).get("stats") or {}
+    dropped = (output.get("dropped_frames") or 0) + (output.get("decoder_dropped_frames") or 0)
+    skipped = (stats.get("dropped_queue") or 0) + (stats.get("dropped_no_reader") or 0)
+    return f"{dropped} dropped · {skipped} skipped"
+
+
+def latency_text(status: dict[str, Any]) -> str:
+    latency = (status.get("output") or {}).get("latency_ms")
+    return f"≈ {latency} ms" if latency is not None else "Not playing"
+
+
 def output_text(status: dict[str, Any]) -> str:
     output = status.get("output") or {}
     if not output.get("running"):
@@ -95,6 +113,8 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             OUTPUT: {STATE: UNAVAILABLE},
             AUTO_SWITCH: {STATE: UNAVAILABLE},
             CAPTURE_INPUT: {STATE: UNAVAILABLE},
+            DROPPED: {STATE: UNAVAILABLE},
+            LATENCY: {STATE: UNAVAILABLE},
         }
     presets = status.get("presets") or {}
     return {
@@ -111,6 +131,8 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             OPTIONS: [d["name"] for d in capture_inputs(status)],
             CURRENT_OPTION: current_input(status),
         },
+        DROPPED: {STATE: ON, VALUE: frames_text(status)},
+        LATENCY: {STATE: ON, VALUE: latency_text(status)},
     }
 
 

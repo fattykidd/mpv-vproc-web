@@ -386,3 +386,21 @@ def test_a_display_never_seen_locked_is_left_alone(tmp_path, monkeypatch):
             await h.processor.stop()
 
     run(scenario())
+
+
+def test_processing_latency_estimate(tmp_path, monkeypatch):
+    h = Harness(tmp_path, "nosignal:2;2160p23976:yuv10:sdr:100000", monkeypatch)
+    latency = lambda: h.processor.status()["output"]["latency_ms"]  # noqa: E731
+
+    async def scenario():
+        assert latency() is None  # not playing yet
+        await h.processor.start()
+        try:
+            await h.until(lambda: latency() is not None, what="a latency estimate")
+            frame, refresh = 1000 / 23.976, 1000 / 60  # the fake mpv reports a 60 Hz display
+            # The frame arriving plus one refresh, and up to a full queue (depth 2) of frames on top.
+            assert frame + refresh - 1 <= latency() <= 3 * frame + refresh + 1
+        finally:
+            await h.processor.stop()
+
+    run(scenario())

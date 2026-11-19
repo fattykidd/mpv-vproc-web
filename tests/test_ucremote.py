@@ -4,13 +4,15 @@ from vproc.ucremote import entities as e
 
 STATUS = {
     "signal": {"present": True, "label": "2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit"},
-    "output": {"running": True, "display_mode": "3840x2160@23.976", "display_fps": 23.976},
+    "output": {"running": True, "display_mode": "3840x2160@23.976", "display_fps": 23.976,
+               "dropped_frames": 2, "decoder_dropped_frames": 0, "latency_ms": 125},
     "presets": {"presets": {"SDR": {}, "HDR to SDR": {}, "Night": {}}, "active": "HDR to SDR", "auto_switch": True},
     "capture": {
         "devices": [{"index": n - 1, "name": f"DeckLink Quad HDMI Recorder ({n})", "persistent_id": 3255474415 + n,
                      "can_capture": True} for n in range(1, 5)],
         "device": {"index": 0, "name": "DeckLink Quad HDMI Recorder (1)"},
         "selected": "id:3255474416",
+        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 0, "queue": 1},
     },
 }
 
@@ -57,3 +59,12 @@ def test_capture_input_selector():
 
     # No card information yet: an empty selector, not an error.
     assert e.attributes_for({})[e.CAPTURE_INPUT] == {"state": "ON", "options": [], "current_option": ""}
+
+
+def test_frame_and_latency_sensors():
+    attrs = e.attributes_for(STATUS)
+    assert attrs[e.DROPPED] == {"state": "ON", "value": "2 dropped · 3 skipped"}
+    assert attrs[e.LATENCY] == {"state": "ON", "value": "≈ 125 ms"}
+    idle = e.attributes_for({"output": {"running": True, "latency_ms": None}})
+    assert idle[e.DROPPED]["value"] == "0 dropped · 0 skipped"
+    assert idle[e.LATENCY]["value"] == "Not playing"

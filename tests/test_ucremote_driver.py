@@ -119,13 +119,15 @@ class Remote:
 
 STATUS = {
     "signal": {"present": True, "label": "2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit"},
-    "output": {"running": True, "display_mode": "3840x2160@23.976", "display_fps": 23.976},
+    "output": {"running": True, "display_mode": "3840x2160@23.976", "display_fps": 23.976,
+               "dropped_frames": 2, "decoder_dropped_frames": 0, "latency_ms": 125},
     "presets": {"presets": {"SDR": {}, "HDR to SDR": {}, "Night": {}}, "active": "HDR to SDR", "auto_switch": True},
     "capture": {
         "devices": [{"index": n - 1, "name": f"DeckLink Quad HDMI Recorder ({n})", "persistent_id": 3255474415 + n,
                      "can_capture": True} for n in range(1, 5)],
         "device": {"index": 0, "name": "DeckLink Quad HDMI Recorder (1)"},
         "selected": "id:3255474416",
+        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 0, "queue": 1},
     },
 }
 
@@ -159,7 +161,7 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             available = (await remote.request("get_available_entities"))["msg_data"]["available_entities"]
             by_id = {x["entity_id"]: x for x in available}
             assert set(by_id) == {e.PRESET, e.INPUT, e.OUTPUT, e.AUTO_SWITCH, e.SHOW_INFO, e.STATS, e.RESTART_OUTPUT,
-                                  e.CAPTURE_INPUT}
+                                  e.CAPTURE_INPUT, e.DROPPED, e.LATENCY}
             assert by_id[e.CAPTURE_INPUT]["entity_type"] == "select"
             assert by_id[e.PRESET]["entity_type"] == "select"
 
@@ -171,6 +173,8 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             assert state[e.INPUT]["value"].startswith("2160p23.976")
             assert state[e.OUTPUT]["value"] == "3840x2160 @ 23.976 Hz"
             assert state[e.AUTO_SWITCH]["state"] == "ON"
+            assert state[e.DROPPED]["value"] == "2 dropped · 3 skipped"
+            assert state[e.LATENCY]["value"] == "≈ 125 ms"
 
             # Commands reach vproc's API.
             ok = await remote.request("entity_command", {"entity_id": e.PRESET, "cmd_id": "select_option",
