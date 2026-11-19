@@ -113,6 +113,7 @@ by default**: while off, nothing is announced on your network and no port is ope
 | Entity | Type | What it does |
 |---|---|---|
 | Picture preset | Select | Pick a preset, or step through them |
+| Capture input | Select | Pick the card's input (e.g. one of a Quad HDMI Recorder's four), or step through them |
 | Input signal | Sensor | e.g. `2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit`, or `No signal` |
 | Output mode | Sensor | e.g. `3840x2160 @ 23.976 Hz` |
 | Auto preset by signal | Switch | Turns automatic SDR/HDR preset switching on or off |

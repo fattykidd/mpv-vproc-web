@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..inputs import spec_for
+
 # Entity identifiers. Keep them stable: the remote stores them in its activities.
 PRESET = "preset"
 INPUT = "input_signal"
@@ -15,6 +17,7 @@ AUTO_SWITCH = "auto_preset"
 SHOW_INFO = "show_info"
 STATS = "stats_overlay"
 RESTART_OUTPUT = "restart_output"
+CAPTURE_INPUT = "capture_input"
 
 NAMES: dict[str, str] = {
     PRESET: "Picture preset",
@@ -24,6 +27,7 @@ NAMES: dict[str, str] = {
     SHOW_INFO: "Show signal info",
     STATS: "Stats overlay",
     RESTART_OUTPUT: "Restart video output",
+    CAPTURE_INPUT: "Capture input",
 }
 
 # Attribute keys and state values, as the Integration API spells them.
@@ -38,6 +42,35 @@ def input_text(status: dict[str, Any]) -> str:
     if signal.get("present") is False:
         return "No signal"
     return "Waiting for input"
+
+
+def capture_inputs(status: dict[str, Any]) -> list[dict[str, Any]]:
+    """The card's inputs that can capture, as dlcap lists them."""
+    devices = (status.get("capture") or {}).get("devices") or []
+    return [d for d in devices if d.get("can_capture", True) and d.get("name")]
+
+
+def current_input(status: dict[str, Any]) -> str:
+    """Name of the input in use: the open one, or else the one asked for (it may be missing)."""
+    capture = status.get("capture") or {}
+    inputs = capture_inputs(status)
+    open_index = (capture.get("device") or {}).get("index")
+    selected = capture.get("selected")
+    for device in inputs:
+        if device.get("index") == open_index:
+            return device["name"]
+    for device in inputs:
+        if selected in (spec_for(device), str(device.get("index"))):
+            return device["name"]
+    return ""
+
+
+def input_selector(status: dict[str, Any], name: str) -> str | None:
+    """The selector vproc's API takes for the input with this name."""
+    for device in capture_inputs(status):
+        if device["name"] == name:
+            return spec_for(device)
+    return None
 
 
 def output_text(status: dict[str, Any]) -> str:
@@ -61,6 +94,7 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             INPUT: {STATE: UNAVAILABLE},
             OUTPUT: {STATE: UNAVAILABLE},
             AUTO_SWITCH: {STATE: UNAVAILABLE},
+            CAPTURE_INPUT: {STATE: UNAVAILABLE},
         }
     presets = status.get("presets") or {}
     return {
@@ -72,6 +106,11 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         INPUT: {STATE: ON, VALUE: input_text(status)},
         OUTPUT: {STATE: ON, VALUE: output_text(status)},
         AUTO_SWITCH: {STATE: ON if presets.get("auto_switch") else OFF},
+        CAPTURE_INPUT: {
+            STATE: ON,
+            OPTIONS: [d["name"] for d in capture_inputs(status)],
+            CURRENT_OPTION: current_input(status),
+        },
     }
 
 

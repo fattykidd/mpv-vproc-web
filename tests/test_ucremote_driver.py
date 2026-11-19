@@ -121,6 +121,12 @@ STATUS = {
     "signal": {"present": True, "label": "2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit"},
     "output": {"running": True, "display_mode": "3840x2160@23.976", "display_fps": 23.976},
     "presets": {"presets": {"SDR": {}, "HDR to SDR": {}, "Night": {}}, "active": "HDR to SDR", "auto_switch": True},
+    "capture": {
+        "devices": [{"index": n - 1, "name": f"DeckLink Quad HDMI Recorder ({n})", "persistent_id": 3255474415 + n,
+                     "can_capture": True} for n in range(1, 5)],
+        "device": {"index": 0, "name": "DeckLink Quad HDMI Recorder (1)"},
+        "selected": "id:3255474416",
+    },
 }
 
 
@@ -152,7 +158,9 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             await asyncio.sleep(0.3)
             available = (await remote.request("get_available_entities"))["msg_data"]["available_entities"]
             by_id = {x["entity_id"]: x for x in available}
-            assert set(by_id) == {e.PRESET, e.INPUT, e.OUTPUT, e.AUTO_SWITCH, e.SHOW_INFO, e.STATS, e.RESTART_OUTPUT}
+            assert set(by_id) == {e.PRESET, e.INPUT, e.OUTPUT, e.AUTO_SWITCH, e.SHOW_INFO, e.STATS, e.RESTART_OUTPUT,
+                                  e.CAPTURE_INPUT}
+            assert by_id[e.CAPTURE_INPUT]["entity_type"] == "select"
             assert by_id[e.PRESET]["entity_type"] == "select"
 
             await remote.request("subscribe_events", {"entity_ids": list(by_id)})
@@ -172,6 +180,18 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             await remote.request("entity_command", {"entity_id": e.PRESET, "cmd_id": "select_next"})
             assert fake.calls[-1][1] == "/api/presets/Night/activate"  # HDR to SDR -> Night
             bad = await remote.request("entity_command", {"entity_id": e.PRESET, "cmd_id": "select_option",
+                                                          "params": {"option": "Nope"}})
+            assert bad["code"] == 400
+
+            # Capture input: by name, and stepping through the Quad's inputs.
+            assert state[e.CAPTURE_INPUT]["current_option"] == "DeckLink Quad HDMI Recorder (1)"
+            ok = await remote.request("entity_command", {"entity_id": e.CAPTURE_INPUT, "cmd_id": "select_option",
+                                                         "params": {"option": "DeckLink Quad HDMI Recorder (3)"}})
+            assert ok["code"] == 200
+            assert fake.calls[-1] == ("PUT", "/api/input", {"device": "id:3255474418"})
+            await remote.request("entity_command", {"entity_id": e.CAPTURE_INPUT, "cmd_id": "select_next"})
+            assert fake.calls[-1][2] == {"device": "id:3255474417"}  # (1) -> (2)
+            bad = await remote.request("entity_command", {"entity_id": e.CAPTURE_INPUT, "cmd_id": "select_option",
                                                           "params": {"option": "Nope"}})
             assert bad["code"] == 400
 

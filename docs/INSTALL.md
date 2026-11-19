@@ -590,7 +590,8 @@ If you move the HDMI cable to another output of the graphics card, run `sudo bas
 1. On the web page, under **Integrations**, switch **Unfolded Circle Remote** on. It shows `On · port 9095`.
 2. In the remote's web configurator, open **Integrations → Add new**. **mpv-vproc-web** appears in the list of
    discovered integrations. Select it, finish the setup (there's nothing to fill in), and choose the entities you
-   want: the picture preset selector, the input and output displays, the auto-preset switch and the buttons.
+   want: the picture preset and capture input selectors, the input and output displays, the auto-preset switch and
+   the buttons.
 
 If it doesn't appear, check step 7's firewall settings, and that the remote and the server are on the same
 network (not separated by a VLAN or a guest network).

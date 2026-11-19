@@ -28,7 +28,8 @@ def driver_metadata(version: str, port: int) -> dict[str, Any]:
         "min_core_api": "0.20.0",
         "name": {"en": "mpv-vproc-web"},
         "description": {
-            "en": "HDR video processor: choose picture presets and see the input signal and output mode."
+            "en": "HDR video processor: choose picture presets and capture inputs, and see the input signal "
+                  "and output mode."
         },
         "port": port,
         "developer": {"name": "mpv-vproc-web contributors", "url": "https://github.com/fattykidd/mpv-vproc-web"},
@@ -81,6 +82,9 @@ class Driver:
             ucapi.Button(e.SHOW_INFO, e.NAMES[e.SHOW_INFO], cmd_handler=self._on_button),
             ucapi.Button(e.STATS, e.NAMES[e.STATS], cmd_handler=self._on_button),
             ucapi.Button(e.RESTART_OUTPUT, e.NAMES[e.RESTART_OUTPUT], cmd_handler=self._on_button),
+            ucapi.Select(e.CAPTURE_INPUT, e.NAMES[e.CAPTURE_INPUT],
+                         {**initial[e.CAPTURE_INPUT], e.OPTIONS: [], e.CURRENT_OPTION: ""},
+                         cmd_handler=self._on_capture_input),
         ]
 
     async def publish(self, status: dict[str, Any] | None) -> None:
@@ -124,6 +128,19 @@ class Driver:
         if not name or name not in options:
             return ucapi.StatusCodes.BAD_REQUEST
         return await self._send("POST", f"/api/presets/{urllib.parse.quote(name, safe='')}/activate")
+
+    async def _on_capture_input(self, entity: ucapi.Entity, cmd_id: str,
+                                params: dict[str, Any] | None) -> ucapi.StatusCodes:
+        current = self._sent.get(e.CAPTURE_INPUT, {})
+        options = current.get(e.OPTIONS, [])
+        if cmd_id == select.Commands.SELECT_OPTION:
+            name = (params or {}).get("option")
+        else:
+            name = e.step_option(options, current.get(e.CURRENT_OPTION, ""), cmd_id)
+        selector = e.input_selector(self.bridge.status or {}, name) if name in options else None
+        if not selector:
+            return ucapi.StatusCodes.BAD_REQUEST
+        return await self._send("PUT", "/api/input", {"device": selector})
 
     async def _on_auto_switch(self, entity: ucapi.Entity, cmd_id: str, params: dict[str, Any] | None) -> ucapi.StatusCodes:
         if cmd_id == switch.Commands.ON:
