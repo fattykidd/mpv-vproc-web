@@ -419,7 +419,9 @@ delete `.env` and start over, the script begins from the template, so add back a
 **Check the resolution.** If more than one display is connected, the script lists them all and uses the first
 one's resolution. If that isn't your projector or TV, change `VPROC_OUTPUT_SIZE` (below).
 
-Everything else in `.env` is optional and explained by the comments next to it. To look at or change it:
+Everything else in `.env` is optional and explained by the comments next to it. Once mpv-vproc-web is running,
+most of these can also be changed in its web page, under **System settings**, without editing the file. To look
+at or change `.env` itself:
 ```sh
 nano .env
 ```

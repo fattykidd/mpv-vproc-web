@@ -403,6 +403,73 @@ function buildSettings() {
   show(state.tab);
 }
 
+// ------------------------------------------------------------------ system settings
+
+const SOURCE_LABEL = { saved: "Set here", env: "From .env", default: "Default" };
+
+function serviceControl(field, save) {
+  if (field.kind === "toggle") {
+    const box = el("input", { type: "checkbox", checked: field.value === "true" });
+    box.addEventListener("change", () => save(box.checked ? "true" : "false"));
+    return el("label", { className: "switch" }, box, el("span", { className: "track", "aria-hidden": "true" }));
+  }
+  if (field.kind === "choice") {
+    const select = el("select", {}, ...field.choices.map((c) => el("option", { value: c, textContent: c })));
+    select.value = field.value;
+    select.addEventListener("change", () => save(select.value));
+    return select;
+  }
+  const input = el("input", {
+    type: field.kind === "number" ? "number" : "text",
+    value: field.value, placeholder: field.placeholder || "", step: field.kind === "number" ? "any" : undefined,
+  });
+  input.addEventListener("change", () => save(input.value));
+  return input;
+}
+
+function renderService(data) {
+  state.service = data;
+  const box = $("#service-fields");
+  const groups = [...new Set(data.fields.map((f) => f.group))];
+  box.replaceChildren(...groups.flatMap((group) => [
+    el("h3", { textContent: group }),
+    ...data.fields.filter((f) => f.group === group).map((field) => {
+      const save = (value) => run(async () => renderService(
+        await api("PUT", "/api/service-settings", { changes: { [field.key]: value } })), "Saved")
+        .then(() => renderService(state.service));  // on error, put the field back
+      const reset = el("button", { type: "button", className: "ghost small reset", textContent: "Reset",
+        title: field.env_value != null ? `Back to .env: ${field.env_value}` : "Back to the default" });
+      reset.addEventListener("click", () => save(null));
+      return el("div", { className: "setting" + (field.source === "saved" ? " overridden" : "") },
+        el("div", {},
+          el("div", { className: "name", textContent: field.label }),
+          el("div", { className: "help", textContent: field.help }),
+          el("div", { className: "source", textContent: SOURCE_LABEL[field.source]
+            + (field.value !== field.running ? ` · running with ${field.running || "(empty)"}` : "") })),
+        serviceControl(field, save),
+        reset);
+    }),
+  ]));
+  facts($("#service-host"), data.host_only.map((h) => [h.name, h.help]));
+
+  const apply = $("#service-apply");
+  apply.disabled = !data.restart_needed || !data.can_restart;
+  $("#service-status").textContent = !data.can_restart ? "Apply is unavailable when vproc runs outside its service."
+    : data.restart_needed ? "Saved. Press Apply to use the new settings." : "";
+}
+
+function bindService() {
+  $("#service").addEventListener("toggle", (e) => {
+    if (e.target.open) run(async () => renderService(await api("GET", "/api/service-settings")));
+  }, { once: false });
+  $("#service-apply").addEventListener("click", async () => {
+    const cautions = state.service.fields.filter((f) => f.caution && f.value !== f.running).map((f) => `${f.label}: ${f.caution}`);
+    if (cautions.length && !(await ask(`${cautions.join("\n")}\n\nApply anyway?`, { input: false, ok: "Apply" }))) return;
+    await run(() => api("POST", "/api/service-settings/apply"), "Restarting vproc…");
+    state.reloadService = true;  // read the settings again once the connection is back
+  });
+}
+
 // ------------------------------------------------------------------ tools
 
 function bindTools() {
@@ -431,7 +498,13 @@ function connect() {
   const ws = new WebSocket(`${proto}://${location.host}/api/ws${query}`);
   socket = ws;
   const conn = $("#conn");
-  ws.onopen = () => { retry = 1000; conn.dataset.state = "live"; conn.textContent = "Live"; };
+  ws.onopen = () => {
+    retry = 1000; conn.dataset.state = "live"; conn.textContent = "Live";
+    if (state.reloadService) {
+      state.reloadService = false;
+      run(async () => renderService(await api("GET", "/api/service-settings")), "vproc restarted with the new settings");
+    }
+  };
   ws.onmessage = (e) => renderStatus(JSON.parse(e.data));
   ws.onclose = (e) => {
     if (socket !== ws) return;
@@ -451,6 +524,7 @@ async function init() {
   bindPresetControls();
   bindInputs();
   bindIntegrations();
+  bindService();
   bindTools();
   try {
     state.schema = await api("GET", "/api/schema");

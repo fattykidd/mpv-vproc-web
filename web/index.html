@@ -88,6 +88,24 @@
       </div>
     </section>
 
+    <details class="panel service" id="service">
+      <summary class="panel-label">System settings</summary>
+      <p class="hint">vproc's own settings. They start out as set in <code>.env</code>; a value changed here is
+        saved by vproc and used instead, and <b>Reset</b> goes back to <code>.env</code>. Changes are saved straight
+        away and take effect when you press <b>Apply</b>, which restarts vproc in a few seconds.</p>
+      <div id="service-fields"></div>
+      <div class="service-actions">
+        <span class="hint" id="service-status"></span>
+        <button type="button" id="service-apply" disabled>Apply (restart vproc)</button>
+      </div>
+      <details class="host-only">
+        <summary>Settings only <code>.env</code> can change</summary>
+        <p class="hint">Docker uses these before vproc starts. Change them in <code>.env</code>, then run
+          <code>docker compose up -d</code>.</p>
+        <dl class="facts" id="service-host"></dl>
+      </details>
+    </details>
+
     <section class="panel tools" aria-label="Tools">
       <div class="panel-label">Tools</div>
       <form class="osd" id="osd-form">

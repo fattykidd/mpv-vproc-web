@@ -131,6 +131,16 @@ button.chip[aria-pressed="true"] { color: var(--accent-ink); background: var(--a
 #uc-remote-state { min-width: 9ch; font-size: 14px; }
 
 .tools { display: grid; gap: 12px; }
+.service > summary { cursor: pointer; margin-bottom: 0; }
+.service[open] > summary { margin-bottom: 10px; }
+.service h3 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 18px 0 4px; }
+.service .source { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.service .setting.overridden .source { color: var(--accent); }
+.service input[type="text"] { width: min(46ch, 100%); font-family: var(--mono); font-size: 13px; }
+.service-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 14px; }
+.service-actions .hint { margin: 0; }
+.host-only { margin-top: 16px; }
+.host-only summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .osd { display: flex; gap: 8px; }
 .osd input { flex: 1; }
 .tool-row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -151,3 +161,4 @@ dialog form { display: grid; gap: 12px; }
 
 [hidden] { display: none !important; }
 .setting:not(.overridden) input[type="range"] { opacity: .35; }
+#prompt-label { white-space: pre-line; }

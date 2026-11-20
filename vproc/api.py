@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
@@ -13,9 +13,10 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import Config
+from .config import Config, ConfigError
 from .mpv import MpvError
 from .processor import Processor
+from .service_settings import ServiceSettings
 from .settings import SCHEMA, PresetStore
 
 
@@ -56,13 +57,26 @@ class InputSelect(Strict):
     device: str | None = Field(max_length=40)
 
 
+class ServiceSettingsUpdate(Strict):
+    changes: dict[str, str | None] = Field(max_length=32)
+
+
 class StatsToggle(Strict):
     page: int | None = Field(default=None, ge=0, le=9)
 
 
-def create_app(config: Config) -> FastAPI:
+def create_app(
+    config: Config,
+    settings: ServiceSettings | None = None,
+    request_restart: Callable[[], None] | None = None,
+    startup_warning: str | None = None,
+) -> FastAPI:
+    """The web app. settings and request_restart come from __main__; without them the settings page is read-only."""
     store = PresetStore(config.data_dir / "presets.json")
     processor = Processor(config, store)
+    settings = settings or ServiceSettings(config.data_dir)
+    if startup_warning:
+        processor.report("settings", startup_warning)
 
     @contextlib.asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -190,6 +204,25 @@ def create_app(config: Config) -> FastAPI:
     async def restart(target: Literal["capture", "output"]) -> dict[str, Any]:
         await (processor.restart_capture() if target == "capture" else processor.restart_output())
         return {"restarted": target}
+
+    @app.get("/api/service-settings", dependencies=api)
+    async def get_service_settings() -> dict[str, Any]:
+        return {**settings.describe(config), "can_restart": request_restart is not None}
+
+    @app.put("/api/service-settings", dependencies=api)
+    async def update_service_settings(body: ServiceSettingsUpdate) -> dict[str, Any]:
+        try:
+            settings.update(body.changes)
+        except ConfigError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {**settings.describe(config), "can_restart": request_restart is not None}
+
+    @app.post("/api/service-settings/apply", dependencies=api)
+    async def apply_service_settings() -> dict[str, Any]:
+        if request_restart is None:
+            raise HTTPException(409, "restarting is only possible when vproc runs as a service")
+        asyncio.get_running_loop().call_later(0.3, request_restart)  # after this response is sent
+        return {"restarting": True}
 
     @app.put("/api/input", dependencies=api)
     async def select_input(body: InputSelect) -> dict[str, Any]:

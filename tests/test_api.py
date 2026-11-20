@@ -90,3 +90,45 @@ def test_remote_integration_toggle(client):
     off = client.put("/api/integrations/uc-remote", json={"enabled": False}).json()
     assert off == {"enabled": False, "running": False, "port": 9095, "error": None}
     assert client.put("/api/integrations/uc-remote", json={"enabled": "maybe"}).status_code == 422
+
+
+def test_service_settings_page(tmp_path, monkeypatch):
+    from vproc.service_settings import ServiceSettings
+
+    monkeypatch.setenv("MOCK_DECKLINK_SCRIPT", "nosignal:100000")
+    monkeypatch.setenv("FAKE_MPV_LOG", str(tmp_path / "mpv.log"))
+    env = {
+        "VPROC_DATA_DIR": str(tmp_path / "data"), "VPROC_RUN_DIR": str(tmp_path / "run"),
+        "VPROC_WEB_DIR": str(ROOT / "web"), "VPROC_DLCAP_BIN": DLCAP_BIN,
+        "VPROC_MPV_BIN": str(ROOT / "tests" / "fake_mpv.py"), "VPROC_OUTPUT_SIZE": "3840x2160",
+    }
+    settings = ServiceSettings(tmp_path / "data", env=env)
+    config, _ = settings.config()  # as __main__ builds it
+    restarts = []
+
+    with TestClient(create_app(config, settings=settings, request_restart=lambda: restarts.append(1))) as client:
+        page = client.get("/api/service-settings").json()
+        assert page["can_restart"] and not page["restart_needed"]
+        fields = {f["key"]: f for f in page["fields"]}
+        assert fields["OUTPUT_SIZE"]["source"] == "env" and fields["OUTPUT_SIZE"]["value"] == "3840x2160"
+
+        r = client.put("/api/service-settings", json={"changes": {"LLDV": "true", "LLDV_PEAK": "1390"}})
+        assert r.status_code == 200, r.text
+        fields = {f["key"]: f for f in r.json()["fields"]}
+        assert (fields["LLDV"]["value"], fields["LLDV"]["source"], fields["LLDV"]["running"]) == ("true", "saved", "false")
+        assert r.json()["restart_needed"]
+
+        bad = client.put("/api/service-settings", json={"changes": {"LLDV_PEAK": "50"}})
+        assert bad.status_code == 400 and "VPROC_LLDV_PEAK" in bad.json()["detail"]
+        assert client.put("/api/service-settings", json={"changes": {"API_TOKEN": "x"}}).status_code == 400
+
+        assert client.post("/api/service-settings/apply").json() == {"restarting": True}
+        deadline = time.monotonic() + 3
+        while not restarts and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert restarts == [1]
+
+    # Without a way to restart (e.g. run directly), the page still works but can't apply.
+    with TestClient(create_app(config, settings=settings)) as client:
+        assert not client.get("/api/service-settings").json()["can_restart"]
+        assert client.post("/api/service-settings/apply").status_code == 409

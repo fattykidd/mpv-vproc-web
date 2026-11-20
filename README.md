@@ -146,6 +146,9 @@ set, send `Authorization: Bearer <token>`; for the WebSocket, use `?token=`.
 | POST | `/api/osd` | `{"message": "...", "duration_ms": 3000}` |
 | POST | `/api/stats-overlay` | `{"page": null}` toggles mpv's stats overlay |
 | POST | `/api/restart/{capture\|output}` | Restart dlcap or mpv |
+| GET | `/api/service-settings` | The settings the web page can change, where each value comes from, and whether a restart is pending |
+| PUT | `/api/service-settings` | `{"changes": {"LLDV": "true", "OUTPUT_SIZE": null}}` saves values (as `.env` would hold them; `null` returns to `.env`); invalid values are refused |
+| POST | `/api/service-settings/apply` | Restarts vproc with the saved settings |
 | PUT | `/api/input` | `{"device": "id:1234"}` (or an index) captures from another input and remembers it; `null` returns to `VPROC_DEVICE` |
 | PUT | `/api/integrations/uc-remote` | `{"enabled": true}` switches the remote integration on or off |
 | GET | `/healthz` | Liveness, no token needed |
@@ -155,8 +158,13 @@ reaches mpv.
 
 ## Configuration
 
-All settings are environment variables in `.env`; `.env.example` documents each one. The ones you're most
-likely to touch:
+All settings are environment variables in `.env`; `.env.example` documents each one. Most of vproc's own
+settings (display, input, lip sync, logging) can also be changed in the web page under **System settings**: a
+value set there is saved in vproc's data volume and used instead of `.env`, **Reset** goes back to `.env`, and
+**Apply** restarts vproc inside the container in a few seconds. Settings Docker needs before the container starts
+(group ids, device paths, ports, the image version, the API token) can only be set in `.env`.
+
+The ones you're most likely to touch:
 
 | Variable | Default | |
 |---|---|---|

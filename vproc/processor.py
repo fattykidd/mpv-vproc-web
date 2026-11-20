@@ -766,6 +766,10 @@ class Processor:
 
     # ------------------------------------------------------------------ plumbing
 
+    def report(self, source: str, message: str) -> None:
+        """Adds a problem to the web page's list, for parts of vproc outside the processor."""
+        self._error(source, message)
+
     def _error(self, source: str, message: str) -> None:
         log.error("%s: %s", source, message)
         self._errors.appendleft({"time": time.time(), "source": source, "message": message})
