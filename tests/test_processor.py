@@ -441,3 +441,33 @@ def test_lldv_is_left_alone_when_disabled(tmp_path, monkeypatch):
             await h.processor.stop()
 
     run(scenario())
+
+
+def test_sends_the_settled_delay_once_per_signal(tmp_path, monkeypatch):
+    import vproc.processor as processor_module
+    from test_lipsync import FakeProcessor
+
+    monkeypatch.setattr(processor_module, "LIPSYNC_SETTLE", 0.5)
+    avp = FakeProcessor()
+    try:
+        h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:sdr:100000", monkeypatch,
+                    lipsync_urls=(avp.url("/api/atlas/input/1/lipsync/{delay_ms}"),), lipsync_offset=40)
+
+        async def scenario():
+            await h.processor.start()
+            try:
+                await h.until(lambda: avp.requests, timeout=20, what="the lip-sync request")
+                await asyncio.sleep(4.5)  # two more stats events: nothing new to send
+                assert len(avp.requests) == 1
+                method, path = avp.requests[0]
+                delay = int(path.rsplit("/", 1)[1])
+                frame, refresh = 1000 / 23.976, 1000 / 60
+                assert method == "POST" and delay % 5 == 0
+                assert frame + refresh + 40 - 5 <= delay <= 3 * frame + refresh + 40 + 5
+                assert h.processor.status()["lipsync"]["delay_ms"] == delay
+            finally:
+                await h.processor.stop()
+
+        run(scenario())
+    finally:
+        avp.close()

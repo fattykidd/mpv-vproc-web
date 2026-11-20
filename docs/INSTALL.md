@@ -602,6 +602,28 @@ and run `docker compose up -d`. `VPROC_LLDV_PEAK` is the brightness the player m
 the EDID's Dolby Vision block (about 1390 for HDFury's EDID 10). With it on, the **Input** panel shows
 **DOLBY VISION**, and the HDR preset is used.
 
+### Lip sync (optional)
+
+vproc delays the picture slightly, by about one to two frames: roughly 60–100 ms at 24 fps and 35–55 ms at 60 fps.
+Audio that is in sync at one frame rate can be out at another. If your AV processor can set its audio delay over
+HTTP, vproc can keep it matched: a few seconds after each new signal starts, it sends its own delay plus a fixed
+offset you choose, and sends again only when the delay changes.
+
+For an AudioControl Hyperion, with sources on inputs 1 and 2 going through vproc, add to `.env`:
+
+```sh
+VPROC_LIPSYNC_URLS=http://hyperion.local:8080/api/atlas/input/1/lipsync/{delay_ms},http://hyperion.local:8080/api/atlas/input/2/lipsync/{delay_ms}
+VPROC_LIPSYNC_OFFSET=0
+```
+
+and run `docker compose up -d`. The web page's **Output** panel then shows the **Audio delay** it set.
+
+**Finding the offset.** vproc only knows its own delay; your display adds its own processing on top. Play an A/V
+sync test video (search for "audio video sync test 23.976"; they show a flash with a beep), and raise or lower
+`VPROC_LIPSYNC_OFFSET` (in ms) until flash and beep line up, then check with a 59.94 test too. The offset stays the
+same whatever the frame rate; vproc takes care of the part that changes. This replaces any lip-sync value you set
+by hand on those inputs.
+
 ---
 
 ## 11. Unfolded Circle Remote (optional)

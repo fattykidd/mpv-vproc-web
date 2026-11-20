@@ -137,6 +137,8 @@ function renderStatus(s) {
     ["Target", target.primaries ? `${target.primaries} · ${target.gamma}${target["max-luma"] ? ` · ${fmt(target["max-luma"], 0)} nits` : ""}` : null],
     ["Dropped", String(drops), drops > 0],
     o.latency_ms != null && ["Latency", `≈ ${o.latency_ms} ms (vproc only)`],
+    s.lipsync?.enabled && ["Audio delay", s.lipsync.error ? "Failed (see problems)"
+      : s.lipsync.delay_ms != null ? `${s.lipsync.delay_ms} ms` : "Waiting for a signal", Boolean(s.lipsync.error)],
     o.hdmi_link?.watched && ["HDMI link",
       o.hdmi_link.locked == null ? "No answer" : o.hdmi_link.locked ? "Locked" : "Not locked", o.hdmi_link.locked === false],
   ]);

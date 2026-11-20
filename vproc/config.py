@@ -95,6 +95,10 @@ class Config:
     # InfoFrame) mapped to lldv_peak nits: the Dolby Vision block in the source's EDID.
     lldv: bool = False
     lldv_peak: float = 1000.0
+    # Keep an AV processor's audio delay matched to vproc's video delay (see lipsync.py).
+    lipsync_urls: tuple[str, ...] = ()
+    lipsync_offset: int = 0  # ms added for the display's own processing; may be negative
+    lipsync_method: str = "POST"
     ddc_device: Path = Path("/dev/vproc-ddc")  # display's DDC bus, for the HDMI link watch
     mpv_log_level: str = "warn"
     mpv_extra_args: tuple[str, ...] = ()
@@ -144,6 +148,12 @@ class Config:
             kw["lldv"] = _bool(v, "VPROC_LLDV")
         if (v := get("LLDV_PEAK")) is not None:
             kw["lldv_peak"] = _float(v, "VPROC_LLDV_PEAK")
+        if (v := get("LIPSYNC_URLS")) is not None:
+            kw["lipsync_urls"] = tuple(u.strip() for u in v.split(",") if u.strip())
+        if (v := get("LIPSYNC_OFFSET")) is not None:
+            kw["lipsync_offset"] = _int(v, "VPROC_LIPSYNC_OFFSET")
+        if (v := get("LIPSYNC_METHOD")) is not None:
+            kw["lipsync_method"] = v.strip().upper()
         if (v := get("MATCH_REFRESH")) is not None:
             kw["match_refresh"] = _bool(v, "VPROC_MATCH_REFRESH")
         if (v := get("REFRESH_MAP")) is not None:
@@ -164,6 +174,13 @@ class Config:
             raise ConfigError("VPROC_GPU_CONTEXT=displayvk needs VPROC_GPU_API=vulkan")
         if not 100 <= self.lldv_peak <= 10000:
             raise ConfigError("VPROC_LLDV_PEAK must be between 100 and 10000 (nits)")
+        for url in self.lipsync_urls:
+            if not url.startswith(("http://", "https://")) or "{delay_ms}" not in url:
+                raise ConfigError(f"VPROC_LIPSYNC_URLS: {url!r} must be an http(s) URL containing {{delay_ms}}")
+        if self.lipsync_method not in {"POST", "PUT", "GET"}:
+            raise ConfigError("VPROC_LIPSYNC_METHOD must be POST, PUT or GET")
+        if not -1000 <= self.lipsync_offset <= 1000:
+            raise ConfigError("VPROC_LIPSYNC_OFFSET must be between -1000 and 1000 (ms)")
         if not 1 <= self.queue_depth <= 16:
             raise ConfigError("VPROC_QUEUE_DEPTH must be between 1 and 16")
 

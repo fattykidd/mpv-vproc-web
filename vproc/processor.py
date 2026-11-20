@@ -23,6 +23,7 @@ from .settings import OPTIONS, PresetStore, Value
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
 from .ddc import DdcBus, is_real_device, link_locked
 from .inputs import InputChoice, check_spec, matches
+from .lipsync import LipSync
 from .integrations import RemoteIntegration
 from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
 
@@ -48,6 +49,10 @@ STALL_RETRY = 10.0  # minimum time between restarts while it stays frozen
 LINK_POLL = 2.0
 LINK_GRACE = 6.0
 LINK_UNLOCKED_READINGS = 2
+# Lip sync: how long a new signal plays before its delay counts as settled, and how many
+# latency readings (one per capture stats event, every 2 s) the median is taken from.
+LIPSYNC_SETTLE = 6.0
+LIPSYNC_READINGS = 3
 # dlcap exit codes that mean "fix the setup", not "try again right away".
 SETUP_ERRORS = {2: "Desktop Video driver not available", 3: "capture device not found", 4: "device can't capture"}
 
@@ -93,6 +98,11 @@ class Processor:
         self._output_since = 0.0
         self._ddc = DdcBus(config.ddc_device) if is_real_device(config.ddc_device) else None
         self._link: dict[str, Any] = {"watched": self._ddc is not None, "locked": None}
+        self.lipsync = LipSync(config.lipsync_urls, config.lipsync_offset, config.lipsync_method)
+        self._lipsync_segment: int | None = None  # segment the readings below belong to
+        self._lipsync_readings: list[int] = []
+        self._lipsync_since = 0.0
+        self._lipsync_done = False
         self.inputs = InputChoice(config.data_dir / "input.json", config.device)
         self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
@@ -175,6 +185,7 @@ class Processor:
                 "hdmi_link": dict(self._link),
                 "latency_ms": self._processing_latency_ms(),
             },
+            "lipsync": self.lipsync.status(),
             "capture": {
                 "running": bool(self._capture and self._capture.running),
                 "device": self._capture_info.get("device"),
@@ -645,6 +656,30 @@ class Processor:
         queued = self._capture_stats.get("queue", 0)
         return round(frame_ms * (1 + queued) + refresh_ms)
 
+    def _track_lipsync(self) -> None:
+        """Collects latency readings for the playing signal; once settled, sends the delay once."""
+        if not self.lipsync.enabled:
+            return
+        latency = self._processing_latency_ms()
+        if latency is None:
+            return
+        if self._loaded_segment != self._lipsync_segment:
+            self._lipsync_segment = self._loaded_segment
+            self._lipsync_readings, self._lipsync_since, self._lipsync_done = [], time.monotonic(), False
+        if self._lipsync_done:
+            return
+        self._lipsync_readings.append(latency)
+        if len(self._lipsync_readings) < LIPSYNC_READINGS or time.monotonic() - self._lipsync_since < LIPSYNC_SETTLE:
+            return
+        self._lipsync_done = True
+        settled = sorted(self._lipsync_readings)[len(self._lipsync_readings) // 2]
+        asyncio.create_task(self._apply_lipsync(settled), name="lipsync")
+
+    async def _apply_lipsync(self, latency_ms: int) -> None:
+        if await self.lipsync.apply(latency_ms) and self.lipsync.error:
+            self._error("lipsync", f"could not set the audio delay: {self.lipsync.error}")
+        self._notify()
+
     def _check_output_stall(self, before: dict[str, Any], now: dict[str, Any]) -> None:
         """Restarts the output when frames keep arriving but mpv has stopped taking them."""
         playing = self._output_ready and self._signal and self._loaded_segment is not None
@@ -689,6 +724,7 @@ class Processor:
             previous = self._capture_stats
             self._capture_stats = {k: v for k, v in event.items() if k != "event"}
             self._check_output_stall(previous, self._capture_stats)
+            self._track_lipsync()
             self._notify()
         elif name == "hello":
             self._capture_info.update(version=event.get("version"), driver=event.get("driver"))
