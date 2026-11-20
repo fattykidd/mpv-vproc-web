@@ -501,7 +501,7 @@ class Processor:
             self._loaded_segment = seg.id
             self._loaded_entry = (result or {}).get("playlist_entry_id")
             await self._set_overlay(None)
-            log.info("playing segment %d: %s", seg.id, seg.to_dict()["label"])
+            log.info("playing segment %d: %s", seg.id, describe(seg, self._colorimetry))
             self._notify()
 
     async def _set_overlay(self, text: str | None) -> None:
