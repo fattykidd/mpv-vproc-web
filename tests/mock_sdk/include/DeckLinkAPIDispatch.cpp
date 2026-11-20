@@ -7,7 +7,7 @@
 //                          <mode>:<pixel>:<transfer>:<frames>[:<maxcll>]
 //                        mode  = 1080p60 | 1080i5994 | 2160p23976 | 2160p5994
 //                        pixel = yuv8 | yuv10 | yuv12 | rgb8 | rgb10
-//                        transfer = sdr | pq | hlg
+//                        transfer = sdr | pq | hlg | lldv (SDR-flagged BT.2020, as LLDV arrives)
 // MOCK_FRAME_INTERVAL_MS delay between frames (default 2)
 // MOCK_DEVICES           comma-separated device names
 //
@@ -100,6 +100,7 @@ long row_bytes_for(BMDPixelFormat pf, long width) {
 
 struct Step {
     bool signal = false;
+    bool bt2020 = false;
     const ModeInfo* mode = nullptr;
     bool rgb = false;
     int bits = 10;
@@ -175,7 +176,7 @@ public:
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
         if (iid == IID_IDeckLinkVideoFrameMetadataExtensions) {
             *ppv = static_cast<IDeckLinkVideoFrameMetadataExtensions*>(
-                new Metadata(step_.eotf, step_.eotf >= 2, step_.max_cll));
+                new Metadata(step_.eotf, step_.bt2020, step_.max_cll));
             return S_OK;
         }
         if (iid == IID_IDeckLinkVideoBuffer) {
@@ -231,6 +232,7 @@ std::vector<Step> parse_script(const char* text) {
             st.rgb = f[1].rfind("rgb", 0) == 0;
             st.bits = std::atoi(f[1].c_str() + 3);
             st.eotf = f[2] == "pq" ? 2 : f[2] == "hlg" ? 3 : 0;
+            st.bt2020 = st.eotf >= 2 || f[2] == "lldv";
             st.frames = std::atoi(f[3].c_str());
             if (f.size() > 4) st.max_cll = std::atof(f[4].c_str());
         }

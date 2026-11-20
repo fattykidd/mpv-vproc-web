@@ -42,6 +42,13 @@ def _int(value: str, name: str) -> int:
         raise ConfigError(f"{name} must be an integer, got {value!r}") from None
 
 
+def _float(value: str, name: str) -> float:
+    try:
+        return float(value)
+    except ValueError:
+        raise ConfigError(f"{name} must be a number, got {value!r}") from None
+
+
 def _refresh_map(value: str, name: str) -> dict[float, float]:
     """Parses "23.976=23.976,25=50,..." into a source->display rate map."""
     result: dict[float, float] = {}
@@ -84,6 +91,10 @@ class Config:
     match_refresh: bool = True
     refresh_map: dict[float, float] = field(default_factory=lambda: dict(DEFAULT_REFRESH_MAP))
     rgb_range: str = "full"  # how to treat RGB input: full | limited
+    # Treat SDR-flagged BT.2020 input as LLDV (player-led Dolby Vision without an HDR
+    # InfoFrame) mapped to lldv_peak nits: the Dolby Vision block in the source's EDID.
+    lldv: bool = False
+    lldv_peak: float = 1000.0
     ddc_device: Path = Path("/dev/vproc-ddc")  # display's DDC bus, for the HDMI link watch
     mpv_log_level: str = "warn"
     mpv_extra_args: tuple[str, ...] = ()
@@ -129,6 +140,10 @@ class Config:
         for key, attr in integers.items():
             if (v := get(key)) is not None:
                 kw[attr] = _int(v, f"VPROC_{key}")
+        if (v := get("LLDV")) is not None:
+            kw["lldv"] = _bool(v, "VPROC_LLDV")
+        if (v := get("LLDV_PEAK")) is not None:
+            kw["lldv_peak"] = _float(v, "VPROC_LLDV_PEAK")
         if (v := get("MATCH_REFRESH")) is not None:
             kw["match_refresh"] = _bool(v, "VPROC_MATCH_REFRESH")
         if (v := get("REFRESH_MAP")) is not None:
@@ -147,6 +162,8 @@ class Config:
             raise ConfigError("VPROC_OUTPUT_SIZE must look like 3840x2160")
         if self.gpu_context == "displayvk" and self.gpu_api != "vulkan":
             raise ConfigError("VPROC_GPU_CONTEXT=displayvk needs VPROC_GPU_API=vulkan")
+        if not 100 <= self.lldv_peak <= 10000:
+            raise ConfigError("VPROC_LLDV_PEAK must be between 100 and 10000 (nits)")
         if not 1 <= self.queue_depth <= 16:
             raise ConfigError("VPROC_QUEUE_DEPTH must be between 1 and 16")
 

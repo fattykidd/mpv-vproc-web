@@ -108,7 +108,7 @@ function renderStatus(s) {
   if (sig.segment) {
     const kind = sig.colorimetry?.kind ?? "sdr";
     pill.dataset.kind = kind;
-    pill.textContent = KIND_LABEL[kind];
+    pill.textContent = sig.colorimetry?.lldv ? "DOLBY VISION" : KIND_LABEL[kind];
     $("#signal-label").textContent = sig.label;
   } else {
     pill.dataset.kind = "none";

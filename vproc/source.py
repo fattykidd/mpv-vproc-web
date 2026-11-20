@@ -8,7 +8,7 @@ and transfer function. Tagging is what makes libplacebo tone-map HDR input.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 
@@ -41,6 +41,7 @@ class Colorimetry:
     max_cll: float = 0.0
     max_fall: float = 0.0
     mastering: Mastering | None = None
+    lldv: bool = False  # LLDV signal, read as HDR10 (see as_lldv)
 
     @classmethod
     def from_event(cls, data: dict[str, Any]) -> Colorimetry:
@@ -51,6 +52,15 @@ class Colorimetry:
             max_fall=float(data.get("max_fall") or 0),
             mastering=Mastering.from_event(data.get("mastering")),
         )
+
+    @property
+    def looks_like_lldv(self) -> bool:
+        """SDR-flagged BT.2020: how LLDV arrives without an HDR InfoFrame. Real SDR video is BT.709."""
+        return self.transfer == "sdr" and self.matrix == "bt2020"
+
+    def as_lldv(self, peak_nits: float) -> Colorimetry:
+        """Reads an LLDV signal as what it is: PQ, BT.2020, mapped by the player to peak_nits."""
+        return replace(self, transfer="pq", max_cll=peak_nits, max_fall=0.0, mastering=None, lldv=True)
 
     @property
     def kind(self) -> str:
@@ -75,6 +85,7 @@ class Colorimetry:
             "transfer": self.transfer,
             "max_cll": self.max_cll,
             "max_fall": self.max_fall,
+            "lldv": self.lldv,
             "mastering": None
             if m is None
             else {"max_luminance": m.max_luminance, "min_luminance": m.min_luminance},
@@ -227,7 +238,7 @@ def describe(segment: Segment, colorimetry: Colorimetry | None = None) -> str:
     scan = "i" if segment.interlaced else "p"
     rate = segment.fps * 2 if segment.interlaced else segment.fps
     rate_text = f"{rate:.3f}".rstrip("0").rstrip(".")
-    kind = {"hdr10": "HDR10", "hlg": "HLG", "sdr": "SDR"}[c.kind]
+    kind = "Dolby Vision (LLDV)" if c.lldv else {"hdr10": "HDR10", "hlg": "HLG", "sdr": "SDR"}[c.kind]
     gamut = {"bt2020": "BT.2020", "bt601": "BT.601"}.get(c.matrix, "BT.709")
     sampling = "RGB 4:4:4" if segment.is_rgb else "4:2:2"
     parts = [f"{segment.height}{scan}{rate_text}", kind, gamut, f"{sampling} {segment.bit_depth}-bit"]

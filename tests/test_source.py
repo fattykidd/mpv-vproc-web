@@ -100,3 +100,24 @@ def test_config_from_env():
         Config.from_env({"VPROC_OUTPUT_SIZE": "4k"})
     with pytest.raises(ConfigError):
         Config.from_env({"VPROC_MATCH_REFRESH": "maybe"})
+
+
+def test_lldv_detection_and_reading():
+    from vproc.source import Colorimetry
+
+    lldv = Colorimetry(matrix="bt2020", transfer="sdr")
+    assert lldv.looks_like_lldv
+    assert not Colorimetry(matrix="bt709", transfer="sdr").looks_like_lldv   # ordinary SDR
+    assert not Colorimetry(matrix="bt2020", transfer="pq").looks_like_lldv   # already HDR10
+    read = lldv.as_lldv(1390)
+    assert (read.kind, read.peak_nits, read.lldv, read.matrix) == ("hdr10", 1390, True, "bt2020")
+
+
+def test_lldv_settings():
+    from vproc.config import Config, ConfigError
+
+    config = Config.from_env({"VPROC_LLDV": "on", "VPROC_LLDV_PEAK": "1390"})
+    assert config.lldv and config.lldv_peak == 1390
+    assert not Config.from_env({}).lldv
+    with pytest.raises(ConfigError):
+        Config.from_env({"VPROC_LLDV_PEAK": "50"})

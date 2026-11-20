@@ -404,3 +404,40 @@ def test_processing_latency_estimate(tmp_path, monkeypatch):
             await h.processor.stop()
 
     run(scenario())
+
+
+def test_lldv_is_read_as_hdr10_when_enabled(tmp_path, monkeypatch):
+    # LLDV without an HDR InfoFrame: SDR-flagged, BT.2020.
+    h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:lldv:100000", monkeypatch, lldv=True, lldv_peak=1390.0)
+    signal = lambda: h.processor.status()["signal"]  # noqa: E731
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            hdr = await h.until(lambda: [e for e in h.entries(event="loadfile") if "gamma=pq" in e["options"]["vf"]],
+                                what="LLDV loaded as PQ")
+            vf = hdr[0]["options"]["vf"]
+            assert "primaries=bt.2020" in vf and "max-luma=1390" in vf
+            assert signal()["colorimetry"]["kind"] == "hdr10" and signal()["colorimetry"]["lldv"] is True
+            assert "Dolby Vision (LLDV)" in signal()["label"]
+            # It counts as HDR for automatic preset switching.
+            await h.until(lambda: h.processor.status()["presets"]["active"] == "HDR to SDR", what="HDR preset")
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
+def test_lldv_is_left_alone_when_disabled(tmp_path, monkeypatch):
+    h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:lldv:100000", monkeypatch)
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            loads = await h.until(lambda: h.entries(event="loadfile"), what="a load")
+            assert "gamma=pq" not in loads[0]["options"]["vf"]
+            assert h.processor.status()["signal"]["colorimetry"]["kind"] == "sdr"
+        finally:
+            await h.processor.stop()
+
+    run(scenario())

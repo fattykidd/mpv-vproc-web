@@ -583,6 +583,25 @@ then shows `HDMI link status readable (locked)`, and the web page's **Output** p
 
 If you move the HDMI cable to another output of the graphics card, run `sudo bash enable-ddc.sh` again.
 
+### Dolby Vision (optional)
+
+The capture card can't take a "real" Dolby Vision signal, but it can take **LLDV** (low-latency or "player-led"
+Dolby Vision): the player does the Dolby Vision processing and sends ordinary-looking HDR video. Players only send
+LLDV when the EDID they see includes a Dolby Vision block that asks for it, for example an HDFury device's EDID
+10, or a custom EDID on an AV processor that supports them.
+
+LLDV arrives without an HDR label, so vproc would treat it as SDR. Either let an HDFury device relabel it as HDR10
+("Use custom HDR … when input is LLDV"), or let vproc recognise it: add to `.env`
+
+```sh
+VPROC_LLDV=true
+VPROC_LLDV_PEAK=1000
+```
+
+and run `docker compose up -d`. `VPROC_LLDV_PEAK` is the brightness the player maps Dolby Vision to: the target in
+the EDID's Dolby Vision block (about 1390 for HDFury's EDID 10). With it on, the **Input** panel shows
+**DOLBY VISION**, and the HDR preset is used.
+
 ---
 
 ## 11. Unfolded Circle Remote (optional)

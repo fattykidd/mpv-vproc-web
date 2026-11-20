@@ -668,7 +668,7 @@ class Processor:
         name = event.get("event")
         if name == "segment":
             self._segment = Segment.from_event(event)
-            self._colorimetry = self._segment.colorimetry
+            self._colorimetry = self._interpret(self._segment.colorimetry)
             self._signal = True
             self._notify()
             await self._sync_output()
@@ -703,10 +703,16 @@ class Processor:
             level = logging.WARNING if event.get("level") == "warning" else logging.INFO
             log.log(level, "dlcap: %s", event.get("message"))
 
+    def _interpret(self, colorimetry: Colorimetry) -> Colorimetry:
+        """Applies VPROC_LLDV: SDR-flagged BT.2020 input is LLDV that nothing relabelled as HDR10."""
+        if self.config.lldv and colorimetry.looks_like_lldv:
+            return colorimetry.as_lldv(self.config.lldv_peak)
+        return colorimetry
+
     async def _on_colorimetry(self, event: dict[str, Any]) -> None:
         if not self._segment or event.get("segment") != self._segment.id:
             return
-        colorimetry = Colorimetry.from_event(event.get("colorimetry") or {})
+        colorimetry = self._interpret(Colorimetry.from_event(event.get("colorimetry") or {}))
         previous_kind = self._colorimetry.kind if self._colorimetry else None
         self._colorimetry = colorimetry
         self._notify()
