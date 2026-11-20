@@ -668,6 +668,10 @@ class Processor:
             self._lipsync_readings, self._lipsync_since, self._lipsync_done = [], time.monotonic(), False
         if self._lipsync_done:
             return
+        if not (self._props.get("display-fps") or 0) > 0:
+            # Right after a start or mode switch the display rate is unknown, and the
+            # estimate would fall back to a source frame instead of a display refresh.
+            return
         self._lipsync_readings.append(latency)
         if len(self._lipsync_readings) < LIPSYNC_READINGS or time.monotonic() - self._lipsync_since < LIPSYNC_SETTLE:
             return

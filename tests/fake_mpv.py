@@ -153,7 +153,12 @@ class FakeMpv:
             record(event="set", name=args[0], value=args[1])
             return "success", None
         if name == "observe_property":
-            self.observers.append(args[1])
+            oid, prop = args[0], args[1]
+            self.observers.append(prop)
+            if prop in self.props:
+                # Like mpv: an observed property's current value is sent right away.
+                asyncio.get_running_loop().call_soon(self.broadcast, {
+                    "event": "property-change", "id": oid, "name": prop, "data": self.props[prop]})
             return "success", None
         if name == "loadfile":
             options = args.get("options", {})
