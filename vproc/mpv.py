@@ -209,6 +209,8 @@ def format_value(value: Any) -> str:
         return "yes" if value else "no"
     if isinstance(value, float):
         return f"{value:g}"
+    if isinstance(value, (list, tuple)):
+        return ":".join(map(str, value))  # mpv's path-list separator on Linux
     return str(value)
 
 

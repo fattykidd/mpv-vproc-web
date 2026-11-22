@@ -115,6 +115,7 @@ RUN useradd --system --uid 1000 --home-dir /data --shell /usr/sbin/nologin vproc
 WORKDIR /app
 COPY vproc/ vproc/
 COPY web/ web/
+COPY shaders/ shaders/
 
 ENV PATH=${PREFIX}/bin:/opt/venv/bin:${PATH} \
     PYTHONUNBUFFERED=1 \

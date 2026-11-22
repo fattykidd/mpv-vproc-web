@@ -176,6 +176,7 @@ The ones you're most likely to touch:
 | `VPROC_DEVICE` | `0` | Which DeckLink input |
 | `VPROC_LLDV` | `false` | Read SDR-flagged BT.2020 input as LLDV (player-led Dolby Vision) and tone-map it as HDR10 |
 | `VPROC_LLDV_PEAK` | `1000` | The nits LLDV is mapped to: the target in the Dolby Vision block of your sources' EDID |
+| `VPROC_LLDV_PRIMARIES` | `bt2020` | The gamut players send LLDV colours in: `bt2020`, `p3` or `bt709`. Try `p3` if LLDV looks oversaturated |
 | `VPROC_EDID_HLG` | `true` | The capture card's EDID offers HLG as well as SDR and HDR10 (the card's own EDID leaves HLG out). `false` leaves the EDID untouched |
 | `VPROC_LIPSYNC_URLS` | – | URLs (comma-separated, with `{delay_ms}`) that receive the audio delay matching vproc's video delay, e.g. an AV processor's lip-sync setting |
 | `VPROC_LIPSYNC_OFFSET` | `0` | Milliseconds added to that delay for the display's own processing (may be negative) |

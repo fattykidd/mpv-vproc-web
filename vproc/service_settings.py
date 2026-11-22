@@ -72,6 +72,9 @@ FIELDS: tuple[Field, ...] = (
     Field("LLDV_PEAK", "lldv_peak", "LLDV peak (nits)", "Input",
           "The brightness players map Dolby Vision to: the target in your EDID's Dolby Vision block.",
           kind="number", placeholder="1000"),
+    Field("LLDV_PRIMARIES", "lldv_primaries", "LLDV colour primaries", "Input",
+          "The gamut players send LLDV colours in. Most use BT.2020; if LLDV colours look oversaturated, "
+          "try P3.", kind="choice", choices=("bt2020", "p3", "bt709")),
     Field("LIPSYNC_URLS", "lipsync_urls", "Lip-sync URLs", "Lip sync",
           "Where to send the audio delay, comma-separated, with {delay_ms} where the number goes.",
           placeholder="http://192.168.1.20:8080/api/atlas/input/1/lipsync/{delay_ms}", live=True),

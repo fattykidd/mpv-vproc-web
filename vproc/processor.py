@@ -19,7 +19,7 @@ from typing import Any
 from .capture import CaptureProcess
 from .config import Config
 from .mpv import MpvError, MpvProcess, build_args
-from .settings import OPTIONS, PresetStore, Value
+from .settings import OPTIONS, PresetStore, Value, to_mpv
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
 from .ddc import DdcBus, is_real_device, link_locked
 from .inputs import InputChoice, check_spec, matches
@@ -368,7 +368,7 @@ class Processor:
                     drm_device=self.config.drm_device,
                     drm_connector=self.config.drm_connector,
                     log_level=self.config.mpv_log_level,
-                    options=self.store.values(),
+                    options={name: to_mpv(name, value) for name, value in self.store.values().items()},
                     extra_args=self.config.mpv_extra_args,
                 ),
                 self.config.mpv_socket,
@@ -453,7 +453,7 @@ class Processor:
         failed = []
         for name, value in changes.items():
             try:
-                await self._mpv.client.set(name, value)
+                await self._mpv.client.set(name, to_mpv(name, value))
             except MpvError as exc:
                 failed.append(f"{name}: {exc}")
         self._applied = target
@@ -789,7 +789,7 @@ class Processor:
     def _interpret(self, colorimetry: Colorimetry) -> Colorimetry:
         """Applies VPROC_LLDV: SDR-flagged BT.2020 input is LLDV that nothing relabelled as HDR10."""
         if self.config.lldv and colorimetry.looks_like_lldv:
-            return colorimetry.as_lldv(self.config.lldv_peak)
+            return colorimetry.as_lldv(self.config.lldv_peak, self.config.lldv_primaries)
         return colorimetry
 
     async def _on_colorimetry(self, event: dict[str, Any]) -> None:

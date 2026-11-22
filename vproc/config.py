@@ -22,6 +22,7 @@ DEFAULT_REFRESH_MAP: dict[float, float] = {
 }
 
 OFFSET_MIN, OFFSET_MAX = -1000, 1000  # ms, the lip-sync offset's range
+LLDV_PRIMARIES = ("bt2020", "p3", "bt709")
 
 
 class ConfigError(ValueError):
@@ -97,6 +98,7 @@ class Config:
     # InfoFrame) mapped to lldv_peak nits: the Dolby Vision block in the source's EDID.
     lldv: bool = False
     lldv_peak: float = 1000.0
+    lldv_primaries: str = "bt2020"  # the gamut the player's LLDV output is in: bt2020 | p3 | bt709
     # Have the capture card's HDMI EDID offer HLG as well as SDR and HDR10. Off leaves
     # the card's own EDID untouched (which leaves HLG out).
     edid_hlg: bool = True
@@ -155,6 +157,8 @@ class Config:
             kw["edid_hlg"] = _bool(v, "VPROC_EDID_HLG")
         if (v := get("LLDV_PEAK")) is not None:
             kw["lldv_peak"] = _float(v, "VPROC_LLDV_PEAK")
+        if (v := get("LLDV_PRIMARIES")) is not None:
+            kw["lldv_primaries"] = v.strip().lower()
         if (v := get("LIPSYNC_URLS")) is not None:
             kw["lipsync_urls"] = tuple(u.strip() for u in v.split(",") if u.strip())
         if (v := get("LIPSYNC_OFFSET")) is not None:
@@ -181,6 +185,8 @@ class Config:
             raise ConfigError("VPROC_GPU_CONTEXT=displayvk needs VPROC_GPU_API=vulkan")
         if not 100 <= self.lldv_peak <= 10000:
             raise ConfigError("VPROC_LLDV_PEAK must be between 100 and 10000 (nits)")
+        if self.lldv_primaries not in LLDV_PRIMARIES:
+            raise ConfigError(f"VPROC_LLDV_PRIMARIES must be one of: {', '.join(LLDV_PRIMARIES)}")
         for url in self.lipsync_urls:
             if not url.startswith(("http://", "https://")) or "{delay_ms}" not in url:
                 raise ConfigError(f"VPROC_LIPSYNC_URLS: {url!r} must be an http(s) URL containing {{delay_ms}}")

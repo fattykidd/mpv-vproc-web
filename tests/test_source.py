@@ -113,11 +113,26 @@ def test_lldv_detection_and_reading():
     assert (read.kind, read.peak_nits, read.lldv, read.matrix) == ("hdr10", 1390, True, "bt2020")
 
 
+def test_lldv_primaries_reach_mpv_and_the_label():
+    seg = segment(colorimetry={"matrix": "bt2020", "transfer": "sdr"})
+    default = seg.colorimetry.as_lldv(1000)
+    assert "primaries=bt.2020" in video_filter(seg, default)
+    p3 = seg.colorimetry.as_lldv(1000, "p3")
+    vf = video_filter(seg, p3)
+    assert "primaries=display-p3" in vf and "colormatrix=bt.2020-ncl" in vf and "gamma=pq" in vf
+    assert " · P3 · " in describe(seg, p3)
+    assert "primaries=bt.709" in video_filter(seg, seg.colorimetry.as_lldv(1000, "bt709"))
+    assert p3.to_dict()["primaries"] == "p3" and Colorimetry().to_dict()["primaries"] is None
+
+
 def test_lldv_settings():
     from vproc.config import Config, ConfigError
 
     config = Config.from_env({"VPROC_LLDV": "on", "VPROC_LLDV_PEAK": "1390"})
-    assert config.lldv and config.lldv_peak == 1390
+    assert config.lldv and config.lldv_peak == 1390 and config.lldv_primaries == "bt2020"
     assert not Config.from_env({}).lldv
+    assert Config.from_env({"VPROC_LLDV_PRIMARIES": "P3"}).lldv_primaries == "p3"
+    with pytest.raises(ConfigError):
+        Config.from_env({"VPROC_LLDV_PRIMARIES": "dci"})
     with pytest.raises(ConfigError):
         Config.from_env({"VPROC_LLDV_PEAK": "50"})

@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import pytest
 
@@ -15,6 +16,21 @@ def test_validation():
                 {"input-ipc-server": "/tmp/x"}, {"deband": "maybe"}, {"brightness": True}):
         with pytest.raises(ValueError):
             validate_values(bad)
+
+
+def test_chroma_shaders_ship_and_translate():
+    from vproc.mpv import format_value
+    from vproc.settings import CHROMA_SHADERS, SHADER_DIR, to_mpv
+
+    assert validate_values({"glsl-shaders": "cfl-lite"}) == {"glsl-shaders": "cfl-lite"}
+    with pytest.raises(ValueError):
+        validate_values({"glsl-shaders": "/tmp/evil.glsl"})  # only the listed choices, never a path
+    for choice, files in CHROMA_SHADERS.items():
+        paths = to_mpv("glsl-shaders", choice)
+        assert len(paths) == len(files) and all(pathlib.Path(p).is_file() for p in paths), choice
+    assert (SHADER_DIR / "cfl" / "LICENSE").is_file()
+    assert to_mpv("glsl-shaders", []) == [] and to_mpv("target-peak", 100) == 100
+    assert format_value(["/a.glsl", "/b.glsl"]) == "/a.glsl:/b.glsl"
 
 
 def test_schema_is_serialisable():

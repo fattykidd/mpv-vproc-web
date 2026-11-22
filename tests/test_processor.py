@@ -149,6 +149,14 @@ def test_live_settings_and_hdr_metadata_updates(tmp_path, monkeypatch):
             await h.processor.update_settings({"target-peak": 140, "tone-mapping": "bt.2390"})
             assert h.entries(event="set", name="target-peak", value=140)
             assert h.entries(event="set", name="tone-mapping", value="bt.2390")
+
+            # A shader choice reaches mpv as the shader files it loads.
+            await h.processor.update_settings({"glsl-shaders": "cfl"})
+            shaders = h.entries(event="set", name="glsl-shaders")[-1]["value"]
+            assert len(shaders) == 1 and shaders[0].endswith("/shaders/cfl/CfL_Prediction.glsl")
+            assert Path(shaders[0]).is_file()
+            await h.processor.update_settings({"glsl-shaders": "off"})
+            assert h.entries(event="set", name="glsl-shaders")[-1]["value"] == []
             with pytest.raises(ValueError):
                 await h.processor.update_settings({"input-ipc-server": "/tmp/evil"})
 
@@ -428,7 +436,8 @@ def test_reports_frame_accounting_and_the_source_clock(tmp_path, monkeypatch):
 
 def test_lldv_is_read_as_hdr10_when_enabled(tmp_path, monkeypatch):
     # LLDV without an HDR InfoFrame: SDR-flagged, BT.2020.
-    h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:lldv:100000", monkeypatch, lldv=True, lldv_peak=1390.0)
+    h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:lldv:100000", monkeypatch, lldv=True, lldv_peak=1390.0,
+                lldv_primaries="p3")
     signal = lambda: h.processor.status()["signal"]  # noqa: E731
 
     async def scenario():
@@ -437,9 +446,10 @@ def test_lldv_is_read_as_hdr10_when_enabled(tmp_path, monkeypatch):
             hdr = await h.until(lambda: [e for e in h.entries(event="loadfile") if "gamma=pq" in e["options"]["vf"]],
                                 what="LLDV loaded as PQ")
             vf = hdr[0]["options"]["vf"]
-            assert "primaries=bt.2020" in vf and "max-luma=1390" in vf
+            assert "primaries=display-p3" in vf and "max-luma=1390" in vf
             assert signal()["colorimetry"]["kind"] == "hdr10" and signal()["colorimetry"]["lldv"] is True
-            assert "Dolby Vision (LLDV)" in signal()["label"]
+            assert signal()["colorimetry"]["primaries"] == "p3"
+            assert "Dolby Vision (LLDV) · P3" in signal()["label"]
             # It counts as HDR for automatic preset switching.
             await h.until(lambda: h.processor.status()["presets"]["active"] == "HDR to SDR", what="HDR preset")
         finally:

@@ -257,6 +257,24 @@ used to calculate the new pixels.
 **If frames are dropped**, the scaler is the first thing to lighten: try `spline36` for the luma and chroma
 upscalers.
 
+### Chroma shader
+
+**Chroma shader** (`glsl-shaders`) goes a step beyond the chroma upscaler. *Chroma from Luma* (CfL) uses the
+full-resolution brightness detail to predict the colour detail a 4:2:2 source leaves out, so colour edges come
+out as sharp as brightness edges. It shows most on red and blue edges, coloured text and credits.
+
+| Choice | What it does |
+|---|---|
+| `off` | The chroma upscaler does the job (the default). |
+| `cfl` | Full CfL. The best colour edges, and the most GPU time. |
+| `cfl-lite` | A lighter CfL that's nearly as good. |
+
+When CfL is on, it replaces the chroma upscaler. It runs on every frame, so after turning it on, play something
+at your highest frame rate for a few minutes and watch **Dropped frames**. If they start to rise, use
+`cfl-lite` or turn it off. It has no effect on RGB sources (PCs, consoles), which have no reduced colour detail.
+
+The shaders are by João Chrisóstomo (Artoriuz), MIT licensed, and ship with vproc (see `shaders/README.md`).
+
 ### The other scaling options
 
 - **Anti-ringing** (`scale-antiring`): reduces the halos that sharp filters can leave around edges. 0 is off,

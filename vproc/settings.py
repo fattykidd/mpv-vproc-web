@@ -19,6 +19,15 @@ from .source import SIGNAL_KINDS
 
 log = logging.getLogger("vproc.settings")
 
+SHADER_DIR = Path(__file__).resolve().parent.parent / "shaders"
+
+# The shaders each "Chroma shader" choice loads, relative to SHADER_DIR (see shaders/README.md).
+CHROMA_SHADERS: dict[str, tuple[str, ...]] = {
+    "off": (),
+    "cfl": ("cfl/CfL_Prediction.glsl",),
+    "cfl-lite": ("cfl/CfL_Prediction_Lite.glsl",),
+}
+
 Value = str | int | float | bool
 
 
@@ -183,6 +192,14 @@ SCHEMA: tuple[Option, ...] = (
            help="How colour detail is enlarged to full resolution (4:2:2 sources).",
            about=("Most video carries colour at half resolution. ewa_lanczossharp or spline36 keep colour edges "
                   "crisp.")),
+    Option("glsl-shaders", "Chroma shader", "Scaling", "choice", choices=tuple(CHROMA_SHADERS),
+           help="Rebuilds colour detail from the full-resolution picture, for crisper colour edges.",
+           about=("Chroma from Luma (CfL) predicts the missing colour detail of 4:2:2 sources from their "
+                  "brightness detail, so red and blue edges, text and credits come out sharper than any "
+                  "chroma upscaler can make them. When on, it replaces the chroma upscaler. cfl-lite is "
+                  "quicker and nearly as good. It costs GPU time on every frame: if Dropped frames start "
+                  "rising, use cfl-lite or turn it off. No effect on RGB sources. Shader by João "
+                  "Chrisóstomo (Artoriuz), MIT licensed.")),
     Option("dscale", "Downscaler", "Scaling", "choice", choices=_SCALERS,
            help="How the picture is shrunk when the source is larger than the display.",
            about="mitchell and hermite are soft and free of artefacts; lanczos is sharper but can ring."),
@@ -256,6 +273,14 @@ SCHEMA: tuple[Option, ...] = (
 )
 
 OPTIONS: dict[str, Option] = {o.name: o for o in SCHEMA}
+
+
+def to_mpv(name: str, value: Any) -> Any:
+    """The value mpv takes for a setting. Most are passed as they are; a shader choice
+    becomes the list of shader files it loads."""
+    if name == "glsl-shaders" and isinstance(value, str) and value in CHROMA_SHADERS:
+        return [str(SHADER_DIR / path) for path in CHROMA_SHADERS[value]]
+    return value
 
 
 def validate_values(values: dict[str, Any]) -> dict[str, Value]:

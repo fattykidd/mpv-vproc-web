@@ -12,6 +12,12 @@ which license, and where to get its source. The project's own code is MIT-licens
 | [FFmpeg](https://ffmpeg.org) | Decoding the raw capture formats, deinterlacing | GPL-2.0-or-later (built with `--enable-gpl`) | https://git.ffmpeg.org/ffmpeg.git |
 | Debian 13 "trixie" packages | Base system, Python, Vulkan/EGL loaders, fonts and libraries | Various free software licenses | https://sources.debian.org |
 
+### Shaders shipped in the image
+
+| Shader | Used for | License | Source |
+|---|---|---|---|
+| [Chroma from Luma (CfL) prediction](https://github.com/Artoriuz/glsl-chroma-from-luma-prediction) by João Chrisóstomo (Artoriuz) | The **Chroma shader** picture setting | MIT | `shaders/cfl/`, copied unchanged; see `shaders/README.md` |
+
 The exact versions are pinned in the `Dockerfile` (`FFMPEG_VERSION`, `LIBPLACEBO_VERSION`, `MPV_VERSION`),
 and the image is built from those upstream release tags without modification. The corresponding source
 code is available at the links above. If you received a built image and need the source for a specific

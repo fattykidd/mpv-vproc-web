@@ -42,6 +42,7 @@ class Colorimetry:
     max_fall: float = 0.0
     mastering: Mastering | None = None
     lldv: bool = False  # LLDV signal, read as HDR10 (see as_lldv)
+    primaries: str = ""  # bt2020 | p3 | bt709 when known better than the matrix implies (LLDV)
 
     @classmethod
     def from_event(cls, data: dict[str, Any]) -> Colorimetry:
@@ -58,9 +59,15 @@ class Colorimetry:
         """SDR-flagged BT.2020: how LLDV arrives without an HDR InfoFrame. Real SDR video is BT.709."""
         return self.transfer == "sdr" and self.matrix == "bt2020"
 
-    def as_lldv(self, peak_nits: float) -> Colorimetry:
-        """Reads an LLDV signal as what it is: PQ, BT.2020, mapped by the player to peak_nits."""
-        return replace(self, transfer="pq", max_cll=peak_nits, max_fall=0.0, mastering=None, lldv=True)
+    def as_lldv(self, peak_nits: float, primaries: str = "bt2020") -> Colorimetry:
+        """Reads an LLDV signal as what it is: PQ, mapped by the player to peak_nits.
+
+        The player also fits the colours to a gamut. Most send them in BT.2020, but some
+        send them already fitted to P3 (or BT.709) without saying so; read as BT.2020,
+        those look oversaturated.
+        """
+        return replace(self, transfer="pq", max_cll=peak_nits, max_fall=0.0, mastering=None, lldv=True,
+                       primaries=primaries)
 
     @property
     def kind(self) -> str:
@@ -86,6 +93,7 @@ class Colorimetry:
             "max_cll": self.max_cll,
             "max_fall": self.max_fall,
             "lldv": self.lldv,
+            "primaries": self.primaries or None,
             "mastering": None
             if m is None
             else {"max_luminance": m.max_luminance, "min_luminance": m.min_luminance},
@@ -166,6 +174,8 @@ class Segment:
 
 _MATRIX = {"bt601": "bt.601", "bt709": "bt.709", "bt2020": "bt.2020-ncl"}
 _TRANSFER = {"sdr": "bt.1886", "pq": "pq", "hlg": "hlg"}
+_PRIMARIES = {"bt2020": "bt.2020", "p3": "display-p3", "bt709": "bt.709"}
+_GAMUT_LABEL = {"bt2020": "BT.2020", "p3": "P3", "bt709": "BT.709", "bt601": "BT.601"}
 
 # Decoder input for each DeckLink pixel format. v210 and r210 carry row padding
 # that FFmpeg's decoders understand; the 8-bit formats are tightly packed.
@@ -182,6 +192,8 @@ class UnsupportedSignal(ValueError):
 
 
 def _primaries(segment: Segment, c: Colorimetry) -> str:
+    if c.primaries in _PRIMARIES:
+        return _PRIMARIES[c.primaries]
     if c.matrix == "bt2020" or c.transfer in {"pq", "hlg"}:
         return "bt.2020"
     if c.matrix == "bt601":
@@ -239,7 +251,7 @@ def describe(segment: Segment, colorimetry: Colorimetry | None = None) -> str:
     rate = segment.fps * 2 if segment.interlaced else segment.fps
     rate_text = f"{rate:.3f}".rstrip("0").rstrip(".")
     kind = "Dolby Vision (LLDV)" if c.lldv else {"hdr10": "HDR10", "hlg": "HLG", "sdr": "SDR"}[c.kind]
-    gamut = {"bt2020": "BT.2020", "bt601": "BT.601"}.get(c.matrix, "BT.709")
+    gamut = _GAMUT_LABEL.get(c.primaries or c.matrix, "BT.709")
     sampling = "RGB 4:4:4" if segment.is_rgb else "4:2:2"
     parts = [f"{segment.height}{scan}{rate_text}", kind, gamut, f"{sampling} {segment.bit_depth}-bit"]
     if c.max_cll > 0:
