@@ -71,3 +71,11 @@ def test_frame_and_latency_sensors():
     idle = e.attributes_for({"output": {"running": True, "latency_ms": None}})
     assert idle[e.DROPPED]["value"] == "0 dropped · 0 skipped · 0 missed"
     assert idle[e.LATENCY]["value"] == "Not playing"
+
+
+def test_lipsync_sensor():
+    on = {"lipsync": {"enabled": True, "delay_ms": 430, "offset_ms": 325}}
+    assert e.attributes_for(on)[e.LIPSYNC] == {"state": "ON", "value": "+325 ms · audio 430 ms"}
+    assert e.lipsync_text({"lipsync": {"enabled": True, "delay_ms": None, "offset_ms": -20}}) == "-20 ms"
+    assert e.lipsync_text({"lipsync": {"enabled": False, "offset_ms": 0}}) == "+0 ms · not sending"
+    assert e.lipsync_text({}) == "+0 ms · not sending"

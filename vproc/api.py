@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import Config, ConfigError
+from .config import OFFSET_MAX, OFFSET_MIN, Config, ConfigError
 from .mpv import MpvError
 from .processor import Processor
 from .service_settings import LIVE, ServiceSettings
@@ -56,6 +56,10 @@ class IntegrationToggle(Strict):
 
 class InputSelect(Strict):
     device: str | None = Field(max_length=40)
+
+
+class LipSyncStep(Strict):
+    step_ms: int = Field(ge=-100, le=100)
 
 
 class ServiceSettingsUpdate(Strict):
@@ -210,11 +214,11 @@ def create_app(
     async def get_service_settings() -> dict[str, Any]:
         return {**settings.describe(config), "can_restart": request_restart is not None}
 
-    @app.put("/api/service-settings", dependencies=api)
-    async def update_service_settings(body: ServiceSettingsUpdate) -> dict[str, Any]:
+    async def save_service_settings(changes: dict[str, str | None]) -> None:
+        """Saves changes, and puts the ones that need no restart into effect."""
         nonlocal config
         try:
-            settings.update(body.changes)
+            settings.update(changes)
         except ConfigError as exc:
             raise HTTPException(400, str(exc)) from None
         saved, _ = settings.config()
@@ -222,7 +226,18 @@ def create_app(
         if live:
             config = dataclasses.replace(config, **live)
             await processor.update_lipsync(config.lipsync_urls, config.lipsync_offset, config.lipsync_method)
+
+    @app.put("/api/service-settings", dependencies=api)
+    async def update_service_settings(body: ServiceSettingsUpdate) -> dict[str, Any]:
+        await save_service_settings(body.changes)
         return {**settings.describe(config), "can_restart": request_restart is not None}
+
+    @app.post("/api/lipsync/offset", dependencies=api)
+    async def step_lipsync_offset(body: LipSyncStep) -> dict[str, Any]:
+        """Moves the lip-sync offset by a few ms, e.g. from a remote's buttons, and saves it."""
+        offset = max(OFFSET_MIN, min(OFFSET_MAX, config.lipsync_offset + body.step_ms))
+        await save_service_settings({"LIPSYNC_OFFSET": str(offset)})
+        return processor.lipsync.status()
 
     @app.post("/api/service-settings/apply", dependencies=api)
     async def apply_service_settings() -> dict[str, Any]:

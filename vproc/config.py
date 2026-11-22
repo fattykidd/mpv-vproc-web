@@ -21,6 +21,8 @@ DEFAULT_REFRESH_MAP: dict[float, float] = {
     60.0: 60.0,
 }
 
+OFFSET_MIN, OFFSET_MAX = -1000, 1000  # ms, the lip-sync offset's range
+
 
 class ConfigError(ValueError):
     """An environment variable holds a value we can't use."""
@@ -184,8 +186,8 @@ class Config:
                 raise ConfigError(f"VPROC_LIPSYNC_URLS: {url!r} must be an http(s) URL containing {{delay_ms}}")
         if self.lipsync_method not in {"POST", "PUT", "GET"}:
             raise ConfigError("VPROC_LIPSYNC_METHOD must be POST, PUT or GET")
-        if not -1000 <= self.lipsync_offset <= 1000:
-            raise ConfigError("VPROC_LIPSYNC_OFFSET must be between -1000 and 1000 (ms)")
+        if not OFFSET_MIN <= self.lipsync_offset <= OFFSET_MAX:
+            raise ConfigError(f"VPROC_LIPSYNC_OFFSET must be between {OFFSET_MIN} and {OFFSET_MAX} (ms)")
         if not 1 <= self.queue_depth <= 16:
             raise ConfigError("VPROC_QUEUE_DEPTH must be between 1 and 16")
 

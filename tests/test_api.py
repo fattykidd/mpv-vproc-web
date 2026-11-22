@@ -129,6 +129,15 @@ def test_service_settings_page(tmp_path, monkeypatch):
         assert not r.json()["restart_needed"]
         assert client.get("/api/status").json()["lipsync"]["offset_ms"] == 325
 
+        # Stepping the offset (the remote's buttons) saves it too, within its range.
+        assert client.post("/api/lipsync/offset", json={"step_ms": 10}).json()["offset_ms"] == 335
+        assert client.post("/api/lipsync/offset", json={"step_ms": -100}).json()["offset_ms"] == 235
+        assert client.post("/api/lipsync/offset", json={"step_ms": 500}).status_code == 422
+        fields = {f["key"]: f for f in client.get("/api/service-settings").json()["fields"]}
+        assert (fields["LIPSYNC_OFFSET"]["value"], fields["LIPSYNC_OFFSET"]["source"]) == ("235", "saved")
+        client.put("/api/service-settings", json={"changes": {"LIPSYNC_OFFSET": "995"}})
+        assert client.post("/api/lipsync/offset", json={"step_ms": 10}).json()["offset_ms"] == 1000
+
         assert client.post("/api/service-settings/apply").json() == {"restarting": True}
         deadline = time.monotonic() + 3
         while not restarts and time.monotonic() < deadline:

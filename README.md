@@ -116,6 +116,8 @@ by default**: while off, nothing is announced on your network and no port is ope
 | Capture input | Select | Pick the card's input (e.g. one of a Quad HDMI Recorder's four), or step through them |
 | Dropped frames | Sensor | Frames lost where they would show: dropped by mpv, skipped during playback, missed by the card ("0 dropped · 0 skipped · 0 missed"). Frames skipped while the output starts up are left out |
 | Processing latency | Sensor | vproc's own delay, averaged over half a minute ("≈ 104 ms"); the source's and display's processing come on top |
+| Lip-sync offset | Sensor | The offset and the audio delay last sent with it, e.g. `+325 ms · audio 430 ms` |
+| Lip-sync offset +10 ms / −10 ms | Buttons | Move the offset 10 ms and send the new audio delay at once; the new value shows on screen for 2 seconds. Saved like a change in **System settings** |
 | Input signal | Sensor | e.g. `2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit`, or `No signal` |
 | Output mode | Sensor | e.g. `3840x2160 @ 23.976 Hz` |
 | Auto preset by signal | Switch | Turns automatic SDR/HDR preset switching on or off |
@@ -146,6 +148,7 @@ set, send `Authorization: Bearer <token>`; for the WebSocket, use `?token=`.
 | POST | `/api/osd` | `{"message": "...", "duration_ms": 3000}` |
 | POST | `/api/stats-overlay` | `{"page": null}` toggles mpv's stats overlay |
 | POST | `/api/restart/{capture\|output}` | Restart dlcap or mpv |
+| POST | `/api/lipsync/offset` | `{"step_ms": 10}` moves the lip-sync offset (−100 to 100 per call), saves it and sends the new audio delay |
 | GET | `/api/service-settings` | The settings the web page can change, where each value comes from, and whether a restart is pending |
 | PUT | `/api/service-settings` | `{"changes": {"LLDV": "true", "OUTPUT_SIZE": null}}` saves values (as `.env` would hold them; `null` returns to `.env`); invalid values are refused |
 | POST | `/api/service-settings/apply` | Restarts vproc with the saved settings |

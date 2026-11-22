@@ -42,7 +42,9 @@ class FakeVproc:
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
-                self.wfile.write(b"{}")
+                reply = {"enabled": True, "delay_ms": 435, "offset_ms": 335, "error": None} \
+                    if self.path == "/api/lipsync/offset" else {}
+                self.wfile.write(json.dumps(reply).encode())
 
             do_POST = do_PUT = _handle
 
@@ -131,6 +133,7 @@ STATUS = {
         "skipped": {"startup": 110, "playback": 3},
         "missed": 0,
     },
+    "lipsync": {"enabled": True, "delay_ms": 425, "offset_ms": 325, "error": None},
 }
 
 
@@ -163,7 +166,7 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             available = (await remote.request("get_available_entities"))["msg_data"]["available_entities"]
             by_id = {x["entity_id"]: x for x in available}
             assert set(by_id) == {e.PRESET, e.INPUT, e.OUTPUT, e.AUTO_SWITCH, e.SHOW_INFO, e.STATS, e.RESTART_OUTPUT,
-                                  e.CAPTURE_INPUT, e.DROPPED, e.LATENCY}
+                                  e.CAPTURE_INPUT, e.DROPPED, e.LATENCY, e.LIPSYNC, e.LIPSYNC_UP, e.LIPSYNC_DOWN}
             assert by_id[e.CAPTURE_INPUT]["entity_type"] == "select"
             assert by_id[e.PRESET]["entity_type"] == "select"
 
@@ -177,6 +180,7 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             assert state[e.AUTO_SWITCH]["state"] == "ON"
             assert state[e.DROPPED]["value"] == "2 dropped · 3 skipped · 0 missed"
             assert state[e.LATENCY]["value"] == "≈ 125 ms"
+            assert state[e.LIPSYNC]["value"] == "+325 ms · audio 425 ms"
 
             # Commands reach vproc's API.
             ok = await remote.request("entity_command", {"entity_id": e.PRESET, "cmd_id": "select_option",
@@ -209,6 +213,14 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             assert fake.calls[-1][:2] == ("POST", "/api/stats-overlay")
             await remote.request("entity_command", {"entity_id": e.RESTART_OUTPUT, "cmd_id": "push"})
             assert fake.calls[-1][:2] == ("POST", "/api/restart/output")
+
+            # The lip-sync buttons step the offset, then show the new value on screen.
+            await remote.request("entity_command", {"entity_id": e.LIPSYNC_UP, "cmd_id": "push"})
+            assert fake.calls[-2] == ("POST", "/api/lipsync/offset", {"step_ms": 10})
+            assert fake.calls[-1] == ("POST", "/api/osd", {"message": "Lip-sync offset +335 ms · audio 435 ms",
+                                                           "duration_ms": 2000})
+            await remote.request("entity_command", {"entity_id": e.LIPSYNC_DOWN, "cmd_id": "push"})
+            assert fake.calls[-2] == ("POST", "/api/lipsync/offset", {"step_ms": -10})
 
             # Status changes become entity_change events on the remote.
             fake.status["presets"]["active"] = "SDR"

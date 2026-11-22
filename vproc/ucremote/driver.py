@@ -86,6 +86,10 @@ class Driver:
                          device_class=sensor.DeviceClasses.CUSTOM),
             ucapi.Sensor(e.LATENCY, e.NAMES[e.LATENCY], [], {**initial[e.LATENCY], e.VALUE: ""},
                          device_class=sensor.DeviceClasses.CUSTOM),
+            ucapi.Sensor(e.LIPSYNC, e.NAMES[e.LIPSYNC], [], {**initial[e.LIPSYNC], e.VALUE: ""},
+                         device_class=sensor.DeviceClasses.CUSTOM),
+            ucapi.Button(e.LIPSYNC_UP, e.NAMES[e.LIPSYNC_UP], cmd_handler=self._on_button),
+            ucapi.Button(e.LIPSYNC_DOWN, e.NAMES[e.LIPSYNC_DOWN], cmd_handler=self._on_button),
             ucapi.Select(e.CAPTURE_INPUT, e.NAMES[e.CAPTURE_INPUT],
                          {**initial[e.CAPTURE_INPUT], e.OPTIONS: [], e.CURRENT_OPTION: ""},
                          cmd_handler=self._on_capture_input),
@@ -167,7 +171,19 @@ class Driver:
             return await self._send("POST", "/api/stats-overlay", {})
         if entity.id == e.RESTART_OUTPUT:
             return await self._send("POST", "/api/restart/output")
+        if entity.id in (e.LIPSYNC_UP, e.LIPSYNC_DOWN):
+            return await self._step_lipsync(e.LIPSYNC_STEP if entity.id == e.LIPSYNC_UP else -e.LIPSYNC_STEP)
         return ucapi.StatusCodes.NOT_FOUND
+
+    async def _step_lipsync(self, step_ms: int) -> ucapi.StatusCodes:
+        """Moves the offset, then shows the result on screen so it can be judged while watching."""
+        try:
+            lipsync = await self.bridge.call("POST", "/api/lipsync/offset", {"step_ms": step_ms})
+        except VprocError as exc:
+            log.warning("command failed: %s", exc)
+            return ucapi.StatusCodes.SERVICE_UNAVAILABLE if exc.unreachable else ucapi.StatusCodes.BAD_REQUEST
+        message = f"Lip-sync offset {e.lipsync_text({'lipsync': lipsync})}"
+        return await self._send("POST", "/api/osd", {"message": message, "duration_ms": 2000})
 
 
 async def _setup(request: ucapi.SetupDriver) -> ucapi.SetupAction:

@@ -20,6 +20,11 @@ RESTART_OUTPUT = "restart_output"
 CAPTURE_INPUT = "capture_input"
 DROPPED = "dropped_frames"
 LATENCY = "processing_latency"
+LIPSYNC = "lipsync_offset"
+LIPSYNC_UP = "lipsync_offset_up"
+LIPSYNC_DOWN = "lipsync_offset_down"
+
+LIPSYNC_STEP = 10  # ms per button press
 
 NAMES: dict[str, str] = {
     PRESET: "Picture preset",
@@ -32,6 +37,9 @@ NAMES: dict[str, str] = {
     CAPTURE_INPUT: "Capture input",
     DROPPED: "Dropped frames",
     LATENCY: "Processing latency",
+    LIPSYNC: "Lip-sync offset",
+    LIPSYNC_UP: f"Lip-sync offset +{LIPSYNC_STEP} ms",
+    LIPSYNC_DOWN: f"Lip-sync offset −{LIPSYNC_STEP} ms",
 }
 
 # Attribute keys and state values, as the Integration API spells them.
@@ -95,6 +103,16 @@ def latency_text(status: dict[str, Any]) -> str:
     return f"≈ {latency} ms" if latency is not None else "Not playing"
 
 
+def lipsync_text(status: dict[str, Any]) -> str:
+    """The offset, and the audio delay last sent with it: "+325 ms · audio 430 ms"."""
+    lipsync = status.get("lipsync") or {}
+    offset = lipsync.get("offset_ms") or 0
+    if not lipsync.get("enabled"):
+        return f"{offset:+d} ms · not sending"
+    delay = lipsync.get("delay_ms")
+    return f"{offset:+d} ms · audio {delay} ms" if delay is not None else f"{offset:+d} ms"
+
+
 def output_text(status: dict[str, Any]) -> str:
     output = status.get("output") or {}
     if not output.get("running"):
@@ -119,6 +137,7 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
             CAPTURE_INPUT: {STATE: UNAVAILABLE},
             DROPPED: {STATE: UNAVAILABLE},
             LATENCY: {STATE: UNAVAILABLE},
+            LIPSYNC: {STATE: UNAVAILABLE},
         }
     presets = status.get("presets") or {}
     return {
@@ -137,6 +156,7 @@ def attributes_for(status: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         },
         DROPPED: {STATE: ON, VALUE: frames_text(status)},
         LATENCY: {STATE: ON, VALUE: latency_text(status)},
+        LIPSYNC: {STATE: ON, VALUE: lipsync_text(status)},
     }
 
 
