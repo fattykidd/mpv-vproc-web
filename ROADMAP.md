@@ -3,16 +3,7 @@
 What's planned for mpv-vproc-web, roughly in the order it's expected to arrive. Plans change: this is a
 direction, not a promise. What has already shipped is in `CHANGELOG.md`.
 
-## Next: diagnostics
-
-Small features that make every later change easier to test and troubleshoot.
-
-- **Frame grab**: save the current processed frame as an image, for before-and-after comparisons and bug
-  reports.
-- **Diagnostics bundle**: one button that collects the log, settings, signal information and timing statistics
-  into a single file to attach to an issue.
-
-## Display calibration
+## Next: display calibration
 
 The largest remaining improvement to the picture itself.
 

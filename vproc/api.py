@@ -10,11 +10,12 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import OFFSET_MAX, OFFSET_MIN, Config, ConfigError
+from .diagnostics import build_bundle, bundle_name, find_grab, keep_recent_log, list_grabs
 from .mpv import MpvError
 from .processor import Processor
 from .service_settings import LIVE, ServiceSettings
@@ -58,6 +59,10 @@ class InputSelect(Strict):
     device: str | None = Field(max_length=40)
 
 
+class FrameGrab(Strict):
+    kind: Literal["display", "source"] = "display"
+
+
 class LipSyncStep(Strict):
     step_ms: int = Field(ge=-100, le=100)
 
@@ -77,6 +82,7 @@ def create_app(
     startup_warning: str | None = None,
 ) -> FastAPI:
     """The web app. settings and request_restart come from __main__; without them the settings page is read-only."""
+    keep_recent_log()
     store = PresetStore(config.data_dir / "presets.json")
     processor = Processor(config, store)
     settings = settings or ServiceSettings(config.data_dir)
@@ -204,6 +210,26 @@ def create_app(
     async def stats_overlay(body: StatsToggle) -> dict[str, Any]:
         await processor.toggle_stats(body.page)
         return {"ok": True}
+
+    @app.post("/api/frame-grab", dependencies=api)
+    async def frame_grab(body: FrameGrab) -> dict[str, Any]:
+        path = await processor.grab_frame(body.kind)
+        return {"name": path.name, "kind": body.kind}
+
+    @app.get("/api/frame-grabs", dependencies=api)
+    async def get_frame_grabs() -> dict[str, Any]:
+        return {"grabs": [p.name for p in list_grabs(config.data_dir)]}
+
+    @app.get("/api/frame-grabs/{name}", dependencies=api)
+    async def get_frame_grab(name: str) -> FileResponse:
+        return FileResponse(find_grab(config.data_dir, name), media_type="image/png", filename=name)
+
+    @app.get("/api/diagnostics", dependencies=api)
+    async def diagnostics() -> Response:
+        page = settings.describe(config)
+        data = await asyncio.to_thread(build_bundle, processor.status(), config, page)
+        return Response(data, media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="{bundle_name()}"'})
 
     @app.post("/api/restart/{target}", dependencies=api)
     async def restart(target: Literal["capture", "output"]) -> dict[str, Any]:

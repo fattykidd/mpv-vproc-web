@@ -184,6 +184,10 @@ def build_args(
         "--target-colorspace-hint=no",
         "--osd-level=1",
         "--osd-duration=2500",
+        # Frame grabs: lossless, 8-bit (small enough to attach to a bug report), quick to encode.
+        "--screenshot-format=png",
+        "--screenshot-png-compression=3",
+        "--screenshot-high-bit-depth=no",
         "--terminal=yes",
         "--msg-color=no",
         f"--msg-level=all={log_level}",

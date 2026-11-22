@@ -149,6 +149,9 @@ set, send `Authorization: Bearer <token>`; for the WebSocket, use `?token=`.
 | POST | `/api/osd` | `{"message": "...", "duration_ms": 3000}` |
 | POST | `/api/stats-overlay` | `{"page": null}` toggles mpv's stats overlay |
 | POST | `/api/restart/{capture\|output}` | Restart dlcap or mpv |
+| POST | `/api/frame-grab` | `{"kind": "display"}` saves the picture as shown (`"source"`: as captured) and returns its name |
+| GET | `/api/frame-grabs` / `/api/frame-grabs/{name}` | List the saved grabs / download one as PNG |
+| GET | `/api/diagnostics` | A zip of the status, settings, versions and recent log, for bug reports |
 | POST | `/api/lipsync/offset` | `{"step_ms": 10}` moves the lip-sync offset (−100 to 100 per call), saves it and sends the new audio delay |
 | GET | `/api/service-settings` | The settings the web page can change, where each value comes from, and whether a restart is pending |
 | PUT | `/api/service-settings` | `{"changes": {"LLDV": "true", "OUTPUT_SIZE": null}}` saves values (as `.env` would hold them; `null` returns to `.env`); invalid values are refused |
@@ -189,6 +192,12 @@ The ones you're most likely to touch:
 | `VPROC_API_TOKEN` | – | Protects the API |
 
 ## Troubleshooting
+
+**Reporting a problem?** In the web page under **Tools**, press **Download diagnostics** and attach the file to
+your GitHub issue. It holds a readable summary, the full status, your settings and presets, the software
+versions and the recent log, and never your API token. **Grab frame** saves the current picture as a PNG, which
+helps when the problem is something you can see. Grabs are kept in the `grabs` folder of vproc's data volume;
+the newest 20 are kept.
 
 * **Black screen; the log shows "no video output came up"**: run the doctor. On NVIDIA, check that
   `nvidia-drm.modeset=1` is set on the host and that nothing else (a desktop, another mpv) holds the

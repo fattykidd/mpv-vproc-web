@@ -173,6 +173,11 @@ class FakeMpv:
         if name == "osd-overlay":
             record(event="overlay", format=args["format"], data=args.get("data", ""))
             return "success", None
+        if name == "screenshot-to-file":
+            with open(args[0], "wb") as f:
+                f.write(b"\x89PNG\r\n\x1a\n fake frame")
+            record(event="screenshot", path=args[0], mode=args[1])
+            return "success", None
         if name in {"show-text", "script-binding"}:
             record(event=name, args=args)
             return "success", None

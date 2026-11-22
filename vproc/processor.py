@@ -14,6 +14,7 @@ import contextlib
 import logging
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 from .capture import CaptureProcess
@@ -22,6 +23,7 @@ from .mpv import MpvError, MpvProcess, build_args
 from .settings import OPTIONS, PresetStore, Value, to_mpv
 from .displays import DisplayMode, find_mode, probe_vulkan_modes
 from .ddc import DdcBus, is_real_device, link_locked
+from .diagnostics import GRAB_KINDS, grab_path, prune_grabs
 from .inputs import InputChoice, check_spec, matches
 from .lipsync import LipSync
 from .integrations import RemoteIntegration
@@ -249,6 +251,21 @@ class Processor:
     async def show_message(self, text: str, duration_ms: int = 3000) -> None:
         client = self._client()
         await client.command("show-text", text, duration_ms)
+
+    async def grab_frame(self, kind: str = "display") -> Path:
+        """Saves the current picture as a PNG in the data volume and returns its path.
+
+        "display" is the picture as sent to the display (scaled and tone-mapped);
+        "source" is the captured frame at its own resolution.
+        """
+        client = self._client()
+        if self._loaded_segment is None:
+            raise MpvError("nothing is playing")
+        path = grab_path(self.config.data_dir, kind)
+        await client.command("screenshot-to-file", str(path), GRAB_KINDS[kind], timeout=20.0)
+        log.info("frame grab saved: %s", path.name)
+        prune_grabs(self.config.data_dir)
+        return path
 
     async def toggle_stats(self, page: int | None = None) -> None:
         client = self._client()

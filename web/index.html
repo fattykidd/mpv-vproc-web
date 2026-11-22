@@ -117,6 +117,17 @@
         <button type="button" class="ghost" data-action="restart-output">Restart output</button>
         <button type="button" class="ghost" data-action="restart-capture">Restart capture</button>
       </div>
+      <div class="tool-row">
+        <select id="grab-kind" aria-label="What to grab">
+          <option value="display">As displayed</option>
+          <option value="source">As captured</option>
+        </select>
+        <button type="button" class="ghost" data-action="grab">Grab frame</button>
+        <button type="button" class="ghost" data-action="diagnostics">Download diagnostics</button>
+      </div>
+      <p class="hint">A frame grab saves the current picture as a PNG: as displayed (scaled and tone-mapped) or as
+        captured. Diagnostics collects the status, settings, versions and recent log into one file to attach to a
+        bug report; it never includes the API token.</p>
     </section>
   </main>
 

@@ -14,6 +14,7 @@ import uvicorn
 
 from .api import create_app
 from .config import Config, ConfigError
+from .diagnostics import LOG_FORMAT, keep_recent_log
 from .service_settings import ServiceSettings
 
 log = logging.getLogger("vproc")
@@ -25,7 +26,8 @@ def main() -> int:
     except ConfigError as exc:
         print(f"configuration error: {exc}", file=sys.stderr)
         return 2
-    logging.basicConfig(format="%(asctime)s %(levelname)-7s %(name)s: %(message)s", stream=sys.stdout)
+    logging.basicConfig(format=LOG_FORMAT, stream=sys.stdout)
+    keep_recent_log()  # for the diagnostics bundle
 
     while True:
         settings = ServiceSettings(base.data_dir)

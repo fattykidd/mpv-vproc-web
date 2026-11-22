@@ -148,3 +148,34 @@ def test_service_settings_page(tmp_path, monkeypatch):
     with TestClient(create_app(config, settings=settings)) as client:
         assert not client.get("/api/service-settings").json()["can_restart"]
         assert client.post("/api/service-settings/apply").status_code == 409
+
+
+def test_frame_grabs_and_diagnostics(client, caplog):
+    import io
+    import logging
+    import zipfile
+
+    caplog.set_level(logging.INFO)  # vproc's own default level, so the grab is logged
+    wait_for_playing(client)
+    grab = client.post("/api/frame-grab", json={"kind": "display"})
+    assert grab.status_code == 200, grab.text
+    name = grab.json()["name"]
+    assert name.startswith("grab-") and name.endswith("-display.png")
+    assert client.post("/api/frame-grab", json={"kind": "source"}).json()["name"].endswith("-source.png")
+    assert client.post("/api/frame-grab", json={"kind": "window"}).status_code == 422
+
+    assert name in client.get("/api/frame-grabs").json()["grabs"]
+    image = client.get(f"/api/frame-grabs/{name}")
+    assert image.status_code == 200 and image.content.startswith(b"\x89PNG")
+    assert image.headers["content-type"] == "image/png"
+    assert client.get("/api/frame-grabs/presets.json").status_code == 404
+    assert client.get("/api/frame-grabs/..%2Fpresets.json").status_code == 404
+
+    bundle = client.get("/api/diagnostics")
+    assert bundle.status_code == 200 and bundle.headers["content-type"] == "application/zip"
+    assert "vproc-diagnostics-" in bundle.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(bundle.content)) as zf:
+        assert "summary.txt" in zf.namelist() and "log.txt" in zf.namelist()
+        assert b"s3cret" not in b"".join(zf.read(n) for n in zf.namelist())
+        assert b"HDR10" in zf.read("summary.txt")
+        assert b"frame grab saved" in zf.read("log.txt")

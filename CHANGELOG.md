@@ -10,6 +10,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Grab frame** (Tools): saves the current picture as a PNG, either as displayed (scaled and tone-mapped) or as
+  captured, and downloads it. The newest 20 are kept in the data volume's `grabs` folder.
+- **Download diagnostics** (Tools): one zip with a readable summary, the full status, settings, presets,
+  software versions and the recent log, to attach to a bug report. The API token is never included.
+- `POST /api/frame-grab`, `GET /api/frame-grabs`, `GET /api/frame-grabs/{name}` and `GET /api/diagnostics`.
+
 ### Documentation
 
 - `ROADMAP.md` lists what's planned next.

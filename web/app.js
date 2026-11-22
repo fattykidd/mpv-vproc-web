@@ -107,6 +107,27 @@ async function api(method, path, body) {
   return data;
 }
 
+// Fetches a file from the API (with the token) and hands it to the browser as a download.
+async function download(path) {
+  const headers = state.token ? { Authorization: `Bearer ${state.token}` } : {};
+  const res = await fetch(path, { headers });
+  if (res.status === 401) {
+    await api("GET", "/api/status");  // asks for the token, then try again
+    return download(path);
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `${res.status} ${res.statusText}`);
+  }
+  const name = /filename="?([^";]+)"?/.exec(res.headers.get("Content-Disposition") || "")?.[1] || path.split("/").pop();
+  const url = URL.createObjectURL(await res.blob());
+  const link = el("a", { href: url, download: name });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 async function run(action, success) {
   try {
     await action();
@@ -533,6 +554,11 @@ function bindTools() {
     stats: () => run(() => api("POST", "/api/stats-overlay", {})),
     "restart-output": () => run(() => api("POST", "/api/restart/output"), "Restarting output"),
     "restart-capture": () => run(() => api("POST", "/api/restart/capture"), "Restarting capture"),
+    grab: () => run(async () => {
+      const grab = await api("POST", "/api/frame-grab", { kind: $("#grab-kind").value });
+      await download(`/api/frame-grabs/${encodeURIComponent(grab.name)}`);
+    }, "Frame grabbed"),
+    diagnostics: () => run(() => download("/api/diagnostics"), "Diagnostics downloaded"),
   };
   for (const b of document.querySelectorAll("[data-action]")) b.addEventListener("click", actions[b.dataset.action]);
 }
