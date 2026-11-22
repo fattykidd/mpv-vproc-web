@@ -21,7 +21,7 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; }
-main { max-width: 1080px; margin: 0 auto; padding: 20px 20px 80px; display: grid; gap: 16px; }
+main { max-width: 1080px; margin: 0 auto; padding: 20px 20px 80px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
@@ -42,13 +42,13 @@ main { max-width: 1080px; margin: 0 auto; padding: 20px 20px 80px; display: grid
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
 .panel-label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 10px; }
 
-.status { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 16px; }
-@media (max-width: 860px) { .status { grid-template-columns: 1fr; } }
+.status { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .status { grid-template-columns: minmax(0, 1fr); } }
 
 .input-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.input-head select { max-width: 60%; }
+.input-head select { max-width: 60%; min-width: 0; }
 .signal-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-.signal-label { font-size: 17px; font-weight: 550; }
+.signal-label { font-size: 17px; font-weight: 550; min-width: 0; overflow-wrap: anywhere; }
 .pill {
   font-size: 12px; font-weight: 700; letter-spacing: .06em; padding: 4px 9px; border-radius: 999px;
   background: var(--panel-2); color: var(--muted); border: 1px solid var(--line);
@@ -71,7 +71,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 20px 20px 80px; display: grid
 .preset-picker { display: flex; gap: 8px; flex-wrap: wrap; }
 .preset-picker select { min-width: 220px; }
 .auto { display: grid; gap: 10px; }
-.auto-map { display: grid; grid-template-columns: repeat(3, minmax(120px, 1fr)); gap: 8px; }
+.auto-map { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .auto-map label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .hint { color: var(--muted); font-size: 13px; margin: 12px 0 0; }
 
@@ -162,3 +162,22 @@ dialog form { display: grid; gap: 12px; }
 [hidden] { display: none !important; }
 .setting:not(.overridden) input[type="range"] { opacity: .35; }
 #prompt-label { white-space: pre-line; }
+
+/* Descriptions on hover, or on a tap: a tapped label takes focus and shows its description. */
+.tip {
+  position: relative; cursor: help; outline: none;
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 70%, transparent);
+  text-underline-offset: 3px;
+}
+.tip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+/* ::before, as ::after already marks changed settings with a dot. */
+.tip:hover::before, .tip:focus::before {
+  content: attr(data-tip);
+  position: absolute; left: 0; top: calc(100% + 6px); z-index: 20;
+  width: max-content; max-width: min(40ch, 80vw);
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel-2); color: var(--text);
+  font-family: inherit; font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  pointer-events: none;
+}

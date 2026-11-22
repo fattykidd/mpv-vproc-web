@@ -34,6 +34,7 @@ class Option:
     maximum: float | None = None
     step: float | None = None
     keywords: tuple[str, ...] = ()  # non-numeric values a number option accepts, e.g. "auto"
+    about: str = ""  # a fuller explanation, shown when hovering over or tapping the setting's name
 
     def validate(self, value: Any) -> Value:
         if self.kind == "toggle":
@@ -66,6 +67,8 @@ class Option:
         d: dict[str, Any] = {"name": self.name, "label": self.label, "group": self.group, "kind": self.kind}
         if self.help:
             d["help"] = self.help
+        if self.about:
+            d["about"] = self.about
         if self.choices:
             d["choices"] = list(self.choices)
         for key in ("minimum", "maximum", "step"):
@@ -90,77 +93,166 @@ SCHEMA: tuple[Option, ...] = (
     Option("tone-mapping", "Tone-mapping curve", "Tone mapping", "choice",
            "How HDR highlights are compressed into the display's range.",
            choices=("auto", "spline", "bt.2390", "bt.2446a", "st2094-40", "st2094-10", "reinhard", "mobius",
-                    "hable", "gamma", "linear", "clip")),
+                    "hable", "gamma", "linear", "clip"),
+           about=("spline (the default) is smooth and natural; bt.2390 is the industry curve and a little more "
+                  "conservative; st2094-40 and st2094-10 follow the dynamic HDR standards; reinhard, mobius and "
+                  "hable are older curves; clip cuts highlights off without compressing them.")),
     Option("tone-mapping-param", "Curve parameter", "Tone mapping", "number",
-           "Curve-specific knob; 0 uses the curve's default.", minimum=0, maximum=10, step=0.01),
+           "Curve-specific knob; 0 uses the curve's default.", minimum=0, maximum=10, step=0.01,
+           about=("What it changes depends on the curve, e.g. the knee or contrast of the spline. Leave it at 0 "
+                  "unless you are fine-tuning a particular curve.")),
     Option("target-peak", "Display peak (nits)", "Tone mapping", "number",
            "Measured peak brightness of the screen. Projectors: typically 50–200.",
-           minimum=10, maximum=10000, step=1, keywords=("auto",)),
+           minimum=10, maximum=10000, step=1, keywords=("auto",),
+           about=("Measure it with a meter on a white window. Too low a value makes the picture bright but "
+                  "flattens highlights; too high makes it dim with more highlight detail.")),
     Option("target-contrast", "Display contrast", "Tone mapping", "number",
            "Native contrast ratio, used to place black.",
-           minimum=10, maximum=1000000, step=1, keywords=("auto", "inf")),
+           minimum=10, maximum=1000000, step=1, keywords=("auto", "inf"),
+           about=("Used to place black, so shadow detail isn't crushed on displays with lifted blacks. Use the "
+                  "measured native contrast; inf suits OLED and auto trusts the display.")),
     Option("hdr-compute-peak", "Dynamic peak detection", "Tone mapping", "choice",
            "Measure every frame's brightness (madVR-style) instead of trusting metadata.",
-           choices=("auto", "yes", "no")),
+           choices=("auto", "yes", "no"),
+           about=("Measures how bright each frame really is and tone-maps for that frame, instead of using one "
+                  "fixed value from the metadata for the whole film. yes is recommended.")),
     Option("hdr-peak-percentile", "Peak percentile", "Tone mapping", "number",
            "Ignore the brightest specks when measuring; 99.995 is a good start.",
-           minimum=0, maximum=100, step=0.001),
+           minimum=0, maximum=100, step=0.001,
+           about=("100 uses the single brightest pixel. Slightly lower ignores tiny specular specks so they don't "
+                  "dim the whole scene.")),
     Option("hdr-peak-decay-rate", "Peak decay rate", "Tone mapping", "number",
-           "How quickly the measured peak follows scene changes.", minimum=0, maximum=1000, step=1),
+           "How quickly the measured peak follows scene changes.", minimum=0, maximum=1000, step=1,
+           about=("Higher values smooth the measured peak over more frames, so brightness changes are gentler but "
+                  "slower to follow the picture.")),
     Option("hdr-scene-threshold-low", "Scene threshold low", "Tone mapping", "number",
-           minimum=0, maximum=20, step=0.1),
+           minimum=0, maximum=20, step=0.1,
+           help="Brightness change between frames that starts a faster adjustment.",
+           about="Below this change the peak drifts slowly; between this and the high threshold it adjusts faster."),
     Option("hdr-scene-threshold-high", "Scene threshold high", "Tone mapping", "number",
-           minimum=0, maximum=20, step=0.1),
+           minimum=0, maximum=20, step=0.1,
+           help="Brightness change between frames treated as a scene cut.",
+           about=("Above this change the measured peak resets at once, so a cut from a dark scene to a bright one "
+                  "isn't blown out.")),
     Option("hdr-contrast-recovery", "Contrast recovery", "Tone mapping", "number",
-           "Restores detail lost in compressed highlights.", minimum=0, maximum=2, step=0.01),
+           "Restores detail lost in compressed highlights.", minimum=0, maximum=2, step=0.01,
+           about=("Puts back fine contrast that tone mapping squeezes out of highlights. Around 0.3 is subtle; "
+                  "much higher can add halos.")),
     Option("tone-mapping-max-boost", "Max boost", "Tone mapping", "number",
-           "Allow brightening dark scenes, up to this factor.", minimum=1, maximum=10, step=0.1),
+           "Allow brightening dark scenes, up to this factor.", minimum=1, maximum=10, step=0.1,
+           about=("1 never makes a scene brighter than the source intends. Higher values lift dark scenes on dim "
+                  "displays.")),
     Option("inverse-tone-mapping", "Inverse tone mapping", "Tone mapping", "toggle",
-           "Expand SDR sources toward an HDR display's range."),
+           "Expand SDR sources toward an HDR display's range.",
+           about="Only for HDR displays: stretches SDR into the HDR range. Leave it off when tone mapping to SDR."),
     Option("tone-mapping-visualize", "Visualize curve", "Tone mapping", "toggle",
-           "Overlay the tone curve and measured peak (diagnostics)."),
+           "Overlay the tone curve and measured peak (diagnostics).",
+           about="Draws the tone curve and the measured peak over the picture. For setting up only."),
     Option("gamut-mapping-mode", "Gamut mapping", "Tone mapping", "choice",
            "How colors outside the display gamut are handled.",
            choices=("auto", "perceptual", "relative", "saturation", "absolute", "desaturate", "darken",
-                    "clip", "linear", "warn")),
+                    "clip", "linear", "warn"),
+           about=("perceptual (recommended) gently compresses colours the display can't show; relative and clip "
+                  "cut them off; darken and desaturate trade brightness or colour; warn highlights the pixels that"
+                  " are out of gamut.")),
 
     # Display
     Option("target-prim", "Display primaries", "Display", "choice",
-           "Gamut the screen is calibrated to.", choices=_PRIMARIES),
+           "Gamut the screen is calibrated to.", choices=_PRIMARIES,
+           about=("bt.709 for a display calibrated to the HD standard. Choose dci-p3 or bt.2020 only if the "
+                  "display is calibrated to that wider gamut.")),
     Option("target-trc", "Display transfer", "Display", "choice",
-           "Gamma the screen is calibrated to (bt.1886 or gamma2.4 for projectors).", choices=_TRANSFERS),
-    Option("dither-depth", "Dither depth", "Display", "choice", choices=("auto", "no", "8", "10")),
-    Option("dither", "Dither algorithm", "Display", "choice", choices=("fruit", "ordered", "error-diffusion", "no")),
+           "Gamma the screen is calibrated to (bt.1886 or gamma2.4 for projectors).", choices=_TRANSFERS,
+           about=("bt.1886 suits most projectors and dark rooms; gamma2.4 is close to it; gamma2.2 or srgb suit "
+                  "brighter rooms.")),
+    Option("dither-depth", "Dither depth", "Display", "choice", choices=("auto", "no", "8", "10"),
+           help="Bit depth to dither to; auto uses the output's depth.",
+           about=("Dithering hides banding when the picture is reduced to the output's bit depth. auto picks the "
+                  "right depth; no turns dithering off.")),
+    Option("dither", "Dither algorithm", "Display", "choice", choices=("fruit", "ordered", "error-diffusion", "no"),
+           help="How the picture is dithered down to the output's bit depth.",
+           about=("fruit (the default) is fine-grained and invisible; error-diffusion is a touch better but costs "
+                  "much more GPU time; ordered is the cheapest.")),
 
     # Scaling
-    Option("scale", "Luma upscaler", "Scaling", "choice", choices=_SCALERS),
-    Option("cscale", "Chroma upscaler", "Scaling", "choice", choices=_SCALERS),
-    Option("dscale", "Downscaler", "Scaling", "choice", choices=_SCALERS),
-    Option("scale-antiring", "Anti-ringing", "Scaling", "number", minimum=0, maximum=1, step=0.05),
-    Option("sigmoid-upscaling", "Sigmoid upscaling", "Scaling", "toggle"),
-    Option("correct-downscaling", "Correct downscaling", "Scaling", "toggle"),
-    Option("linear-downscaling", "Linear-light downscaling", "Scaling", "toggle"),
+    Option("scale", "Luma upscaler", "Scaling", "choice", choices=_SCALERS,
+           help="How the picture is enlarged, e.g. 1080p sources on a 4K display.",
+           about=("ewa_lanczossharp is sharp and high quality; spline36 is a lighter alternative; bilinear is the "
+                  "cheapest. Only used when the source is smaller than the display.")),
+    Option("cscale", "Chroma upscaler", "Scaling", "choice", choices=_SCALERS,
+           help="How colour detail is enlarged to full resolution (4:2:2 sources).",
+           about=("Most video carries colour at half resolution. ewa_lanczossharp or spline36 keep colour edges "
+                  "crisp.")),
+    Option("dscale", "Downscaler", "Scaling", "choice", choices=_SCALERS,
+           help="How the picture is shrunk when the source is larger than the display.",
+           about="mitchell and hermite are soft and free of artefacts; lanczos is sharper but can ring."),
+    Option("scale-antiring", "Anti-ringing", "Scaling", "number", minimum=0, maximum=1, step=0.05,
+           help="Reduces the halos sharp scalers leave around edges.",
+           about="0 is off; 0.5 to 0.8 removes most halos from lanczos-type scalers with little softening."),
+    Option("sigmoid-upscaling", "Sigmoid upscaling", "Scaling", "toggle",
+           help="Upscale in a way that limits ringing around bright edges.",
+           about=("Reduces the dark and bright fringes sharp scalers can draw around high-contrast edges. "
+                  "Recommended on.")),
+    Option("correct-downscaling", "Correct downscaling", "Scaling", "toggle",
+           help="Keep downscaling sharp and alias-free.",
+           about="Widens the filter when shrinking the picture, avoiding aliasing and shimmer. Recommended on."),
+    Option("linear-downscaling", "Linear-light downscaling", "Scaling", "toggle",
+           help="Downscale in linear light for more faithful fine detail.",
+           about=("Shrinks the picture in linear light, which keeps the brightness of fine detail right. Can look "
+                  "harsher on some content.")),
 
     # Debanding
-    Option("deband", "Deband", "Debanding", "toggle"),
-    Option("deband-iterations", "Iterations", "Debanding", "number", minimum=1, maximum=16, step=1),
-    Option("deband-threshold", "Threshold", "Debanding", "number", minimum=0, maximum=4096, step=1),
-    Option("deband-range", "Range", "Debanding", "number", minimum=1, maximum=64, step=1),
-    Option("deband-grain", "Grain", "Debanding", "number", minimum=0, maximum=4096, step=1),
+    Option("deband", "Deband", "Debanding", "toggle",
+           help="Smooths the stepped bands compression leaves in skies and gradients.",
+           about=("Smooths banding in skies, fog and dark gradients that compression leaves behind. Mostly helps "
+                  "streamed and lower-bitrate sources.")),
+    Option("deband-iterations", "Iterations", "Debanding", "number", minimum=1, maximum=16, step=1,
+           help="Debanding passes; more removes stronger banding.",
+           about="1 is light; 4 handles heavy banding. Each pass costs a little GPU time."),
+    Option("deband-threshold", "Threshold", "Debanding", "number", minimum=0, maximum=4096, step=1,
+           help="Debanding strength; higher also starts to soften fine detail.",
+           about=("Higher values remove stronger banding but begin to blur fine, low-contrast detail. Around 48 to"
+                  " 64 is typical.")),
+    Option("deband-range", "Range", "Debanding", "number", minimum=1, maximum=64, step=1,
+           help="How far debanding looks around each pixel.",
+           about="Larger values catch wider bands. Around 16 is typical."),
+    Option("deband-grain", "Grain", "Debanding", "number", minimum=0, maximum=4096, step=1,
+           help="Noise added to hide any remaining banding; 0 keeps the picture clean.",
+           about="A little grain hides any banding left over. 0 keeps the picture clean."),
 
     # Picture
-    Option("brightness", "Brightness", "Picture", "number", minimum=-100, maximum=100, step=1),
-    Option("contrast", "Contrast", "Picture", "number", minimum=-100, maximum=100, step=1),
-    Option("saturation", "Saturation", "Picture", "number", minimum=-100, maximum=100, step=1),
-    Option("gamma", "Gamma", "Picture", "number", minimum=-100, maximum=100, step=1),
-    Option("hue", "Hue", "Picture", "number", minimum=-100, maximum=100, step=1),
+    Option("brightness", "Brightness", "Picture", "number", minimum=-100, maximum=100, step=1,
+           help="Raises or lowers black and everything above it. 0 leaves it unchanged.",
+           about=("Like a TV's brightness control. Better set at the display or source if you can; use it here to "
+                  "trim black.")),
+    Option("contrast", "Contrast", "Picture", "number", minimum=-100, maximum=100, step=1,
+           help="Stretches or flattens the picture around mid-grey. 0 leaves it unchanged.",
+           about="Like a TV's contrast control. Set the display's own contrast first."),
+    Option("saturation", "Saturation", "Picture", "number", minimum=-100, maximum=100, step=1,
+           help="Colour intensity. 0 leaves it unchanged; -100 is black and white.",
+           about="Like a TV's colour control. Keep it at 0 for an accurate picture."),
+    Option("gamma", "Gamma", "Picture", "number", minimum=-100, maximum=100, step=1,
+           help="Brightens or darkens mid-tones without moving black or white. 0 leaves it unchanged.",
+           about="Brightens or darkens mid-tones only. Small values make a visible difference."),
+    Option("hue", "Hue", "Picture", "number", minimum=-100, maximum=100, step=1,
+           help="Rotates all colours. 0 leaves it unchanged.",
+           about="Like a TV's tint control. Keep it at 0 for an accurate picture."),
 
     # Geometry (constant-height projection, overscan)
     Option("video-aspect-override", "Aspect override", "Geometry", "choice",
-           choices=("no", "16:9", "4:3", "1.85:1", "2:1", "2.35:1", "2.39:1", "2.40:1")),
-    Option("video-zoom", "Zoom (log2)", "Geometry", "number", minimum=-2, maximum=2, step=0.01),
-    Option("video-pan-y", "Vertical shift", "Geometry", "number", minimum=-1, maximum=1, step=0.005),
-    Option("panscan", "Pan & scan", "Geometry", "number", minimum=0, maximum=1, step=0.01),
+           choices=("no", "16:9", "4:3", "1.85:1", "2:1", "2.35:1", "2.39:1", "2.40:1"),
+           help="Show the picture at a fixed aspect ratio.",
+           about="For anamorphic lenses or a constant-height screen. no shows the source's own aspect."),
+    Option("video-zoom", "Zoom (log2)", "Geometry", "number", minimum=-2, maximum=2, step=0.01,
+           help="Enlarges or shrinks the picture; 0 is the normal size.",
+           about=("On a log2 scale: 0.25 is about 19% larger and -0.25 about 16% smaller. Used with a constant-"
+                  "height screen.")),
+    Option("video-pan-y", "Vertical shift", "Geometry", "number", minimum=-1, maximum=1, step=0.005,
+           help="Moves the picture up or down.",
+           about="-1 to 1, as a share of the picture height. Positions a cropped picture on the screen."),
+    Option("panscan", "Pan & scan", "Geometry", "number", minimum=0, maximum=1, step=0.01,
+           help="Crops the picture to fill the screen; 0 shows it whole.",
+           about="1 crops fully to fill the screen; 0 shows the whole picture with black bars."),
 )
 
 OPTIONS: dict[str, Option] = {o.name: o for o in SCHEMA}

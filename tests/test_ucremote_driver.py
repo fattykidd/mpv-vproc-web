@@ -127,7 +127,9 @@ STATUS = {
                      "can_capture": True} for n in range(1, 5)],
         "device": {"index": 0, "name": "DeckLink Quad HDMI Recorder (1)"},
         "selected": "id:3255474416",
-        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 0, "queue": 1},
+        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 110, "queue": 1},
+        "skipped": {"startup": 110, "playback": 3},
+        "missed": 0,
     },
 }
 
@@ -173,7 +175,7 @@ def test_driver_end_to_end(tmp_path, monkeypatch):
             assert state[e.INPUT]["value"].startswith("2160p23.976")
             assert state[e.OUTPUT]["value"] == "3840x2160 @ 23.976 Hz"
             assert state[e.AUTO_SWITCH]["state"] == "ON"
-            assert state[e.DROPPED]["value"] == "2 dropped · 3 skipped"
+            assert state[e.DROPPED]["value"] == "2 dropped · 3 skipped · 0 missed"
             assert state[e.LATENCY]["value"] == "≈ 125 ms"
 
             # Commands reach vproc's API.

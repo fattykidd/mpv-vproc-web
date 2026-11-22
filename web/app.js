@@ -12,6 +12,44 @@ const el = (tag, props = {}, ...children) => {
   return node;
 };
 
+// Gives a label a description that shows on hover, or on a tap on touch screens
+// (a tapped label takes focus, and the description shows while it has it).
+const tip = (node, text) => {
+  if (!text) return node;
+  node.classList.add("tip");
+  node.dataset.tip = text;
+  node.tabIndex = 0;
+  node.setAttribute("aria-description", text);
+  return node;
+};
+
+// What each status row means, shown on hover or tap.
+const STATUS_TIPS = {
+  "Format": "The resolution and scan type of the signal arriving at the capture card.",
+  "Frame rate": "The frame rate the source says it is sending.",
+  "Encoding": "How the signal carries colour (RGB or YCbCr 4:2:2) and its bit depth.",
+  "MaxCLL / FALL": "From the HDR metadata: the brightest pixel in the film, and its brightest frame on average.",
+  "Mastering": "The brightness range of the display the film was graded on.",
+  "State": "Playing: the picture is on screen. Ready: the output is up and waiting for a signal.",
+  "Mode": "The resolution and refresh rate the display is driven at.",
+  "Refresh": "The display's refresh rate.",
+  "Rendering": "The rate frames are handed to the renderer.",
+  "Target": "What the picture is prepared for: the display's gamut, gamma and peak brightness.",
+  "Dropped": "Frames the renderer threw away because it fell behind. Each one is a visible stutter; it should stay at 0.",
+  "Latency": "vproc's own delay from the capture card to the display, averaged over half a minute. "
+    + "The display's own processing comes on top.",
+  "Audio delay": "The delay last sent to the AV processor: vproc's latency plus your lip-sync offset.",
+  "HDMI link": "Whether the display reports a locked HDMI signal. vproc restarts the output if it's lost.",
+  "Device": "The capture input in use.",
+  "Driver": "The Blackmagic Desktop Video driver version.",
+  "Frames": "Frames handed to the renderer, out of everything the card captured.",
+  "Skipped": "Frames skipped during playback because the renderer fell behind. Each one is a visible stutter.",
+  "Skipped at start": "Frames that arrived while the output was still starting up. Expected, and never seen.",
+  "Missed by card": "Frames the source sent that the card never delivered. Each one is a visible stutter.",
+  "Source clock": "How far the source's real frame rate is from its nominal rate, in parts per million, "
+    + "measured against the server's clock. Shown after a minute of playback.",
+};
+
 const KIND_LABEL = { sdr: "SDR", hdr10: "HDR10", hlg: "HLG" };
 const state = {
   token: localStorage.getItem("vproc-token") || "",
@@ -92,9 +130,9 @@ function fmt(value, digits = 3) {
   return String(value);
 }
 
-function facts(target, rows) {
+function facts(target, rows, tips = {}) {
   target.replaceChildren(...rows.filter(Boolean).flatMap(([k, v, bad]) => [
-    el("dt", { textContent: k }),
+    tip(el("dt", { textContent: k }), tips[k]),
     el("dd", { textContent: v ?? "—", className: bad ? "bad" : "" }),
   ]));
 }
@@ -124,7 +162,7 @@ function renderStatus(s) {
     ["Encoding", `${seg.signal === "rgb444" ? "RGB 4:4:4" : "YCbCr 4:2:2"}, ${seg.bit_depth}-bit (${seg.pixel_format})`],
     c && c.kind !== "sdr" && ["MaxCLL / FALL", `${fmt(c.max_cll)} / ${fmt(c.max_fall)} nits`],
     c?.mastering && ["Mastering", `${fmt(c.mastering.min_luminance, 4)}–${fmt(c.mastering.max_luminance)} nits`],
-  ] : []);
+  ] : [], STATUS_TIPS);
 
   const o = s.output;
   const target = o.target_params || {};
@@ -141,17 +179,22 @@ function renderStatus(s) {
       : s.lipsync.delay_ms != null ? `${s.lipsync.delay_ms} ms` : "Waiting for a signal", Boolean(s.lipsync.error)],
     o.hdmi_link?.watched && ["HDMI link",
       o.hdmi_link.locked == null ? "No answer" : o.hdmi_link.locked ? "Locked" : "Not locked", o.hdmi_link.locked === false],
-  ]);
+  ], STATUS_TIPS);
 
   const cap = s.capture;
   const st = cap.stats || {};
-  const lost = (st.dropped_queue ?? 0) + (st.dropped_no_reader ?? 0);
+  const skipped = cap.skipped || {};
+  const missed = cap.missed ?? 0;
+  const counting = st.captured != null;
   facts($("#capture-facts"), [
     ["Device", cap.device?.name ?? (cap.running ? "…" : "Not running"), !cap.running],
     ["Driver", cap.driver],
-    ["Frames", st.captured != null ? `${st.written} shown of ${st.captured}` : null],
-    ["Skipped", st.captured != null ? String(lost) : null, lost > 0],
-  ]);
+    ["Frames", counting ? `${st.written} shown of ${st.captured}` : null],
+    ["Skipped", counting ? String(skipped.playback ?? 0) : null, skipped.playback > 0],
+    counting && skipped.startup > 0 && ["Skipped at start", String(skipped.startup)],
+    ["Missed by card", counting ? String(missed) : null, missed > 0],
+    cap.source_clock && ["Source clock", sourceClockText(cap.source_clock)],
+  ], STATUS_TIPS);
 
   const errors = s.errors || [];
   $("#errors").hidden = errors.length === 0;
@@ -164,6 +207,12 @@ function renderStatus(s) {
   renderInputs(cap);
   renderPresets(s.presets);
   renderIntegrations(s.integrations || {});
+}
+
+function sourceClockText(clock) {
+  if (clock.ppm == null) return `Measuring… (${clock.measured_for} s)`;
+  const sign = clock.ppm > 0 ? "+" : clock.ppm < 0 ? "−" : "±";
+  return `${sign}${Math.abs(clock.ppm).toFixed(1)} ppm · ${clock.fps.toFixed(4)} fps`;
 }
 
 // ------------------------------------------------------------------ integrations
@@ -386,7 +435,9 @@ function buildSettings() {
     const reset = el("button", { type: "button", className: "ghost small reset", textContent: "Reset", title: "Use mpv's default" });
     reset.addEventListener("click", () => run(() => api("DELETE", `/api/settings/${encodeURIComponent(opt.name)}`)));
     row.append(
-      el("div", {}, el("div", { className: "name", textContent: opt.label }), opt.help ? el("div", { className: "help", textContent: opt.help }) : null),
+      el("div", {},
+        tip(el("div", { className: "name", textContent: opt.label }), opt.about),
+        opt.help ? el("div", { className: "help", textContent: opt.help }) : null),
       control.node,
       reset,
     );
@@ -442,7 +493,7 @@ function renderService(data) {
       reset.addEventListener("click", () => save(null));
       return el("div", { className: "setting" + (field.source === "saved" ? " overridden" : "") },
         el("div", {},
-          el("div", { className: "name", textContent: field.label }),
+          tip(el("div", { className: "name", textContent: field.label }), `In .env: VPROC_${field.key}`),
           el("div", { className: "help", textContent: field.help }),
           el("div", { className: "source", textContent: SOURCE_LABEL[field.source]
             + (field.value !== field.running ? ` · running with ${field.running || "(empty)"}` : "") })),

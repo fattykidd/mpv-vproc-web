@@ -95,6 +95,9 @@ class Config:
     # InfoFrame) mapped to lldv_peak nits: the Dolby Vision block in the source's EDID.
     lldv: bool = False
     lldv_peak: float = 1000.0
+    # Have the capture card's HDMI EDID offer HLG as well as SDR and HDR10. Off leaves
+    # the card's own EDID untouched (which leaves HLG out).
+    edid_hlg: bool = True
     # Keep an AV processor's audio delay matched to vproc's video delay (see lipsync.py).
     lipsync_urls: tuple[str, ...] = ()
     lipsync_offset: int = 0  # ms added for the display's own processing; may be negative
@@ -146,6 +149,8 @@ class Config:
                 kw[attr] = _int(v, f"VPROC_{key}")
         if (v := get("LLDV")) is not None:
             kw["lldv"] = _bool(v, "VPROC_LLDV")
+        if (v := get("EDID_HLG")) is not None:
+            kw["edid_hlg"] = _bool(v, "VPROC_EDID_HLG")
         if (v := get("LLDV_PEAK")) is not None:
             kw["lldv_peak"] = _float(v, "VPROC_LLDV_PEAK")
         if (v := get("LIPSYNC_URLS")) is not None:

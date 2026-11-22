@@ -114,8 +114,8 @@ by default**: while off, nothing is announced on your network and no port is ope
 |---|---|---|
 | Picture preset | Select | Pick a preset, or step through them |
 | Capture input | Select | Pick the card's input (e.g. one of a Quad HDMI Recorder's four), or step through them |
-| Dropped frames | Sensor | Frames mpv dropped, and frames skipped because it fell behind ("0 dropped · 0 skipped") |
-| Processing latency | Sensor | vproc's own delay, estimated ("≈ 63 ms"); the source's and display's processing come on top |
+| Dropped frames | Sensor | Frames lost where they would show: dropped by mpv, skipped during playback, missed by the card ("0 dropped · 0 skipped · 0 missed"). Frames skipped while the output starts up are left out |
+| Processing latency | Sensor | vproc's own delay, averaged over half a minute ("≈ 104 ms"); the source's and display's processing come on top |
 | Input signal | Sensor | e.g. `2160p23.976 · HDR10 · BT.2020 · 4:2:2 10-bit`, or `No signal` |
 | Output mode | Sensor | e.g. `3840x2160 @ 23.976 Hz` |
 | Auto preset by signal | Switch | Turns automatic SDR/HDR preset switching on or off |
@@ -172,6 +172,7 @@ The ones you're most likely to touch:
 | `VPROC_DEVICE` | `0` | Which DeckLink input |
 | `VPROC_LLDV` | `false` | Read SDR-flagged BT.2020 input as LLDV (player-led Dolby Vision) and tone-map it as HDR10 |
 | `VPROC_LLDV_PEAK` | `1000` | The nits LLDV is mapped to: the target in the Dolby Vision block of your sources' EDID |
+| `VPROC_EDID_HLG` | `true` | The capture card's EDID offers HLG as well as SDR and HDR10 (the card's own EDID leaves HLG out). `false` leaves the EDID untouched |
 | `VPROC_LIPSYNC_URLS` | – | URLs (comma-separated, with `{delay_ms}`) that receive the audio delay matching vproc's video delay, e.g. an AV processor's lip-sync setting |
 | `VPROC_LIPSYNC_OFFSET` | `0` | Milliseconds added to that delay for the display's own processing (may be negative) |
 | `VPROC_LIPSYNC_METHOD` | `POST` | HTTP method for those URLs: `POST`, `PUT` or `GET` |
@@ -200,6 +201,10 @@ The ones you're most likely to touch:
   version that reports HDR metadata (BlackmagicFirmwareUpdater).
 * **Dropped frames**: the stats overlay (Tools → Toggle stats overlay) shows render times. Try cheaper
   scalers (`spline36`) or turn off `sigmoid-upscaling`.
+* **Occasional stutters**: the Capture panel separates the causes. **Skipped** counts frames lost because the
+  renderer fell behind during playback; **Missed by card** counts frames the source sent that never arrived.
+  **Source clock** shows how far the source runs from its nominal frame rate, measured against the server's
+  clock. Hover over (or tap) any row for an explanation.
 
 ## Development
 

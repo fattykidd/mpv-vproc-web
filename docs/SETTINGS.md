@@ -53,6 +53,9 @@ scaling keeps detail sharp without halos or jagged edges.
 
 ## Start here
 
+In the web page, hover over (or tap) any setting's name for a short explanation of what it does and what to
+try.
+
 These three settings, in the **HDR to SDR** preset, decide how HDR looks on *your* display. Everything else is
 fine-tuning.
 

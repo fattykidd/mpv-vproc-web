@@ -406,6 +406,26 @@ def test_processing_latency_estimate(tmp_path, monkeypatch):
     run(scenario())
 
 
+def test_reports_frame_accounting_and_the_source_clock(tmp_path, monkeypatch):
+    h = Harness(tmp_path, "nosignal:2;2160p23976:yuv10:sdr:100000", monkeypatch)
+    capture = lambda: h.processor.status()["capture"]  # noqa: E731
+
+    async def scenario():
+        await h.processor.start()
+        try:
+            await h.until(lambda: capture()["source_clock"] is not None, what="a source clock reading")
+            clock = capture()["source_clock"]
+            assert clock["nominal"] == pytest.approx(24000 / 1001, abs=1e-6)
+            assert clock["fps"] > 0
+            assert clock["ppm"] is None  # far too early to trust
+            assert set(capture()["skipped"]) == {"startup", "playback"}
+            assert capture()["missed"] == 0
+        finally:
+            await h.processor.stop()
+
+    run(scenario())
+
+
 def test_lldv_is_read_as_hdr10_when_enabled(tmp_path, monkeypatch):
     # LLDV without an HDR InfoFrame: SDR-flagged, BT.2020.
     h = Harness(tmp_path, "nosignal:100;2160p23976:yuv10:lldv:100000", monkeypatch, lldv=True, lldv_peak=1390.0)

@@ -43,6 +43,8 @@ typedef uint32_t BMDDeckLinkAttributeID;
 typedef uint32_t BMDDeckLinkAPIInformationID;
 typedef uint32_t BMDBufferAccessFlags;
 typedef uint32_t BMDColorspace;
+typedef uint32_t BMDDeckLinkHDMIInputEDIDID;
+typedef uint32_t BMDDynamicRange;
 
 enum : uint32_t {
     bmdModeUnknown = mk4("iunk"),
@@ -103,6 +105,12 @@ enum : uint32_t {
     bmdDeckLinkFrameMetadataHDRMaximumFrameAverageLightLevel = mk4("fall"),
 };
 enum : uint32_t {
+    bmdDynamicRangeSDR = 0,
+    bmdDynamicRangeHDRStaticPQ = 1 << 29,
+    bmdDynamicRangeHDRStaticHLG = 1 << 30,
+};
+enum : uint32_t { bmdDeckLinkHDMIInputEDIDDynamicRange = mk4("HIDy") };
+enum : uint32_t {
     BMDDeckLinkPersistentID = mk4("peid"),
     BMDDeckLinkVideoIOSupport = mk4("vios"),
     BMDDeckLinkSupportsInputFormatDetection = mk4("infd"),
@@ -116,6 +124,7 @@ extern const REFIID IID_IDeckLinkInput;
 extern const REFIID IID_IDeckLinkProfileAttributes;
 extern const REFIID IID_IDeckLinkVideoFrameMetadataExtensions;
 extern const REFIID IID_IDeckLinkVideoBuffer;
+extern const REFIID IID_IDeckLinkHDMIInputEDID;
 
 class IUnknown {
 public:
@@ -152,6 +161,14 @@ public:
 #if MOCK_DECKLINK_API_VERSION < 0x0e030000
     virtual HRESULT GetBytes(void** buffer) = 0;
 #endif
+    virtual HRESULT GetStreamTime(BMDTimeValue* frameTime, BMDTimeValue* frameDuration, BMDTimeScale timeScale) = 0;
+};
+
+class IDeckLinkHDMIInputEDID : public IUnknown {
+public:
+    virtual HRESULT SetInt(BMDDeckLinkHDMIInputEDIDID id, int64_t value) = 0;
+    virtual HRESULT GetInt(BMDDeckLinkHDMIInputEDIDID id, int64_t* value) = 0;
+    virtual HRESULT WriteToEDID() = 0;
 };
 
 class IDeckLinkVideoFrameMetadataExtensions : public IUnknown {

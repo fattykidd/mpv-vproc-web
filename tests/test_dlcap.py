@@ -21,11 +21,13 @@ pytestmark = pytest.mark.skipif(not DLCAP_BIN, reason="DLCAP_BIN not set")
 
 
 class Dlcap:
-    def __init__(self, tmp_path: Path, script: str, interval_ms: int = 2, extra_env: dict | None = None):
+    def __init__(self, tmp_path: Path, script: str, interval_ms: int = 2, extra_env: dict | None = None,
+                 args: list[str] | None = None):
         env = dict(os.environ, MOCK_DECKLINK_SCRIPT=script, MOCK_FRAME_INTERVAL_MS=str(interval_ms))
         env.update(extra_env or {})
+        self.stderr = ""
         self.proc = subprocess.Popen(
-            [DLCAP_BIN, "--fifo-dir", str(tmp_path / "fifo"), "--queue-depth", "2"],
+            [DLCAP_BIN, "--fifo-dir", str(tmp_path / "fifo"), "--queue-depth", "2", *(args or [])],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -62,7 +64,7 @@ class Dlcap:
             except subprocess.TimeoutExpired:
                 self.proc.kill()
                 raise
-        stderr = self.proc.stderr.read()
+        self.stderr = stderr = self.proc.stderr.read()
         assert "ERROR: AddressSanitizer" not in stderr, stderr
         assert "runtime error" not in stderr, stderr
         return self.proc.returncode
@@ -214,3 +216,92 @@ def test_quit_command_cleans_up(run, tmp_path):
     assert d.wait_for("exit")["status"] == 0
     assert d.close() == 0
     assert not list((tmp_path / "fifo").glob("*.fifo"))
+
+
+def stats_after(d: Dlcap, seconds: float) -> dict:
+    """The first stats event emitted once the capture has run for the given time."""
+    deadline = time.monotonic() + seconds
+    while True:
+        stats = d.wait_for("stats", timeout=seconds + 5)
+        if time.monotonic() >= deadline:
+            return stats
+
+
+def test_measures_the_source_frame_rate(run):
+    d = run("1080p60:yuv10:sdr:100000", interval_ms=5)
+    d.wait_for("segment")
+    first = stats_after(d, 2.0)
+    t0 = time.monotonic()
+    last = stats_after(d, 4.0)
+    observed = (last["captured"] - first["captured"]) / (time.monotonic() - t0)
+    # The mock paces frames loosely, so compare with what the test saw over the same stretch.
+    assert last["source_fps"] == pytest.approx(observed, rel=0.15)
+    assert last["source_span"] >= 4
+    assert last["missed"] == 0
+
+
+def test_rate_is_unknown_without_a_signal(run):
+    d = run("nosignal:100000")
+    stats = stats_after(d, 2.5)
+    assert stats["source_fps"] is None
+    assert stats["source_span"] == 0
+
+
+def test_counts_frames_the_card_never_delivered(run):
+    # Every 10th frame is lost before dlcap sees it: the stream time jumps over it.
+    d = run("1080p60:yuv10:sdr:100000", interval_ms=5, extra_env={"MOCK_SKIP_EVERY": "10"})
+    d.wait_for("segment")
+    stats = stats_after(d, 4.5)
+    arrived = stats["captured"]
+    assert arrived / 10 - 3 <= stats["missed"] <= arrived / 10 + 3
+    # The rate counts the source's frames, the missed ones included.
+    assert stats["source_fps"] > 1.05 * (arrived / (stats["source_span"] + 0.5))
+
+
+def test_reports_the_average_queue(run, tmp_path):
+    d = run("1080p60:yuv10:sdr:100000", interval_ms=5)
+    d.wait_for("segment")
+    stats = stats_after(d, 2.5)
+    # Nobody reads the segment, so frames are always waiting in the full queue.
+    assert stats["queue_avg"] is not None and 0 <= stats["queue_avg"] <= 2
+
+
+def test_edid_offers_hlg_by_default(run):
+    d = run("1080p60:yuv10:sdr:5")
+    log = d.wait_for("log", level="info")
+    assert log["message"] == "the card's HDMI EDID offers SDR, HDR10 (PQ) and HLG"
+    d.close()
+    assert "mock-edid: dynamic range 1610612736" in d.stderr  # PQ | HLG; SDR is 0
+
+
+def test_edid_ranges_can_be_chosen(run):
+    d = run("1080p60:yuv10:sdr:5", args=["--hdmi-dynamic-range", "sdr,pq"])
+    assert d.wait_for("log", level="info")["message"] == "the card's HDMI EDID offers SDR and HDR10 (PQ)"
+    d.close()
+    assert "mock-edid: dynamic range 536870912" in d.stderr
+
+
+def test_edid_can_be_left_alone(run):
+    d = run("1080p60:yuv10:sdr:5", args=["--hdmi-dynamic-range", "default"])
+    d.wait_for("segment")
+    d.close()
+    assert "mock-edid" not in d.stderr
+
+
+def test_card_without_edid_control_still_captures(run):
+    d = run("1080p60:yuv10:sdr:5", extra_env={"MOCK_NO_EDID": "1"})
+    assert "can't be changed" in d.wait_for("log", level="info")["message"]
+    d.wait_for("segment")
+
+
+def test_failed_edid_write_is_a_warning(run):
+    d = run("1080p60:yuv10:sdr:5", extra_env={"MOCK_EDID_FAIL": "1"})
+    assert "could not update" in d.wait_for("log", level="warning")["message"]
+    d.wait_for("segment")
+
+
+def test_rejects_unknown_dynamic_range(tmp_path):
+    out = subprocess.run([DLCAP_BIN, "--hdmi-dynamic-range", "sdr,dolby"], capture_output=True, text=True,
+                         timeout=10)
+    assert out.returncode == 64
+    assert "--hdmi-dynamic-range" in out.stderr

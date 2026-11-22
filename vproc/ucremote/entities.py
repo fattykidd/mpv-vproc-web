@@ -78,12 +78,16 @@ def input_selector(status: dict[str, Any], name: str) -> str | None:
 
 
 def frames_text(status: dict[str, Any]) -> str:
-    """Frames mpv dropped, and frames the capture side skipped because mpv fell behind."""
+    """Frames lost where they would show: dropped by mpv, skipped during playback, missed by the card.
+
+    Frames skipped while the output was starting up are left out; nothing was on screen.
+    """
     output = status.get("output") or {}
-    stats = (status.get("capture") or {}).get("stats") or {}
+    capture = status.get("capture") or {}
     dropped = (output.get("dropped_frames") or 0) + (output.get("decoder_dropped_frames") or 0)
-    skipped = (stats.get("dropped_queue") or 0) + (stats.get("dropped_no_reader") or 0)
-    return f"{dropped} dropped · {skipped} skipped"
+    skipped = (capture.get("skipped") or {}).get("playback") or 0
+    missed = capture.get("missed") or 0
+    return f"{dropped} dropped · {skipped} skipped · {missed} missed"
 
 
 def latency_text(status: dict[str, Any]) -> str:

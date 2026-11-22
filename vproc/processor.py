@@ -26,6 +26,7 @@ from .inputs import InputChoice, check_spec, matches
 from .lipsync import LipSync
 from .integrations import RemoteIntegration
 from .source import Colorimetry, Segment, UnsupportedSignal, describe, display_mode_for, load_options, video_filter
+from .timing import STARTUP_GRACE, FrameAccount, QueueAverage, source_clock
 
 log = logging.getLogger("vproc.processor")
 
@@ -50,9 +51,9 @@ LINK_POLL = 2.0
 LINK_GRACE = 6.0
 LINK_UNLOCKED_READINGS = 2
 # Lip sync: how long a new signal plays before its delay counts as settled, and how many
-# latency readings (one per capture stats event, every 2 s) the median is taken from.
-LIPSYNC_SETTLE = 6.0
-LIPSYNC_READINGS = 3
+# latency readings (one per capture stats event, every 2 s) are averaged into the delay.
+LIPSYNC_SETTLE = 10.0
+LIPSYNC_READINGS = 5
 # dlcap exit codes that mean "fix the setup", not "try again right away".
 SETUP_ERRORS = {2: "Desktop Video driver not available", 3: "capture device not found", 4: "device can't capture"}
 
@@ -93,6 +94,8 @@ class Processor:
         self._colorimetry: Colorimetry | None = None
         self._capture_info: dict[str, Any] = {}
         self._capture_stats: dict[str, Any] = {}
+        self._frames = FrameAccount()
+        self._queue_avg = QueueAverage()
         self._stall_since: float | None = None
         self._last_stall_restart = 0.0
         self._output_since = 0.0
@@ -107,6 +110,7 @@ class Processor:
         self._capture_wake = asyncio.Event()  # cuts a retry wait short when the input changes
 
         # Output state.
+        self._loaded_at = 0.0
         self._vulkan_modes: list[DisplayMode] = []
         self._bad_modes: set[str] = set()
         self._display_mode = self._home_mode
@@ -195,6 +199,9 @@ class Processor:
                 "driver": self._capture_info.get("driver"),
                 "dlcap": self._capture_info.get("version"),
                 "stats": self._capture_stats,
+                "skipped": self._frames.to_dict(),
+                "missed": self._capture_stats.get("missed", 0),
+                "source_clock": self._source_clock(),
             },
             "presets": self.store.state.to_dict(),
             "integrations": {"uc_remote": self.remote.status()},
@@ -510,6 +517,8 @@ class Processor:
                 self._error("output", f"could not load the capture stream: {exc}")
                 return
             self._loaded_segment = seg.id
+            self._loaded_at = time.monotonic()
+            self._queue_avg.reset()
             self._loaded_entry = (result or {}).get("playlist_entry_id")
             await self._set_overlay(None)
             log.info("playing segment %d: %s", seg.id, describe(seg, self._colorimetry))
@@ -566,6 +575,7 @@ class Processor:
                 self.config.fifo_dir,
                 self.config.queue_depth,
                 self._on_capture_event,
+                edid_hlg=self.config.edid_hlg,
             )
             try:
                 await self._capture.start()
@@ -653,8 +663,26 @@ class Processor:
         frame_ms = 1000 * segment.fps_den / segment.fps_num
         display_fps = self._props.get("display-fps") or 0
         refresh_ms = 1000 / display_fps if display_fps > 0 else frame_ms
-        queued = self._capture_stats.get("queue", 0)
+        queued = self._queue_avg.value()
+        if queued is None:
+            queued = self._capture_stats.get("queue", 0)
         return round(frame_ms * (1 + queued) + refresh_ms)
+
+    def _playback_settled(self) -> bool:
+        """A segment has been playing long enough that any skip would show on screen."""
+        return (
+            self._loaded_segment is not None
+            and self._segment is not None
+            and self._loaded_segment == self._segment.id
+            and time.monotonic() - self._loaded_at >= STARTUP_GRACE
+        )
+
+    def _source_clock(self) -> dict[str, Any] | None:
+        segment = self._segment
+        if not (self._signal and segment):
+            return None
+        clock = source_clock(self._capture_stats, segment.fps_num, segment.fps_den)
+        return clock.to_dict() if clock else None
 
     def _track_lipsync(self) -> None:
         """Collects latency readings for the playing signal; once settled, sends the delay once."""
@@ -672,11 +700,13 @@ class Processor:
             # Right after a start or mode switch the display rate is unknown, and the
             # estimate would fall back to a source frame instead of a display refresh.
             return
+        if not self._playback_settled():
+            return  # the queue is still filling as mpv opens the stream
         self._lipsync_readings.append(latency)
         if len(self._lipsync_readings) < LIPSYNC_READINGS or time.monotonic() - self._lipsync_since < LIPSYNC_SETTLE:
             return
         self._lipsync_done = True
-        settled = sorted(self._lipsync_readings)[len(self._lipsync_readings) // 2]
+        settled = round(sum(self._lipsync_readings) / len(self._lipsync_readings))
         asyncio.create_task(self._apply_lipsync(settled), name="lipsync")
 
     async def _apply_lipsync(self, latency_ms: int) -> None:
@@ -727,6 +757,11 @@ class Processor:
         elif name == "stats":
             previous = self._capture_stats
             self._capture_stats = {k: v for k, v in event.items() if k != "event"}
+            settled = self._playback_settled()
+            self._frames.update(self._capture_stats, settled=settled)
+            if settled:
+                # Not before: while mpv opens the stream, frames back up and the queue reads full.
+                self._queue_avg.add(self._capture_stats)
             self._check_output_stall(previous, self._capture_stats)
             self._track_lipsync()
             self._notify()

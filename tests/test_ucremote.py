@@ -12,7 +12,9 @@ STATUS = {
                      "can_capture": True} for n in range(1, 5)],
         "device": {"index": 0, "name": "DeckLink Quad HDMI Recorder (1)"},
         "selected": "id:3255474416",
-        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 0, "queue": 1},
+        "stats": {"captured": 1000, "written": 997, "dropped_queue": 3, "dropped_no_reader": 110, "queue": 1},
+        "skipped": {"startup": 110, "playback": 3},
+        "missed": 1,
     },
 }
 
@@ -63,8 +65,9 @@ def test_capture_input_selector():
 
 def test_frame_and_latency_sensors():
     attrs = e.attributes_for(STATUS)
-    assert attrs[e.DROPPED] == {"state": "ON", "value": "2 dropped · 3 skipped"}
+    # Start-up skips (110 here) are left out: nothing was on screen yet.
+    assert attrs[e.DROPPED] == {"state": "ON", "value": "2 dropped · 3 skipped · 1 missed"}
     assert attrs[e.LATENCY] == {"state": "ON", "value": "≈ 125 ms"}
     idle = e.attributes_for({"output": {"running": True, "latency_ms": None}})
-    assert idle[e.DROPPED]["value"] == "0 dropped · 0 skipped"
+    assert idle[e.DROPPED]["value"] == "0 dropped · 0 skipped · 0 missed"
     assert idle[e.LATENCY]["value"] == "Not playing"

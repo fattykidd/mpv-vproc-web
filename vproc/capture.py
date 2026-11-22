@@ -18,12 +18,14 @@ EventHandler = Callable[[dict[str, Any]], Awaitable[None]]
 class CaptureProcess:
     """One running dlcap. Events arrive in order on `on_event`."""
 
-    def __init__(self, dlcap_bin: str, device: str, fifo_dir: Path, queue_depth: int, on_event: EventHandler):
+    def __init__(self, dlcap_bin: str, device: str, fifo_dir: Path, queue_depth: int, on_event: EventHandler,
+                 edid_hlg: bool = True):
         self.args = [
             dlcap_bin,
             "--device", device,
             "--fifo-dir", str(fifo_dir),
             "--queue-depth", str(queue_depth),
+            "--hdmi-dynamic-range", "sdr,pq,hlg" if edid_hlg else "default",
         ]
         self.fifo_dir = fifo_dir
         self._on_event = on_event

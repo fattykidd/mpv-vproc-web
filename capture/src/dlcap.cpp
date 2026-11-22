@@ -428,6 +428,7 @@ struct Options {
     size_t queue_depth = 2;
     int pipe_size = 1 << 20;
     bool list_only = false;
+    std::string hdmi_dynamic_range = "sdr,pq,hlg";
 };
 
 struct Stats {
@@ -437,6 +438,104 @@ struct Stats {
     std::atomic<uint64_t> dropped_queue{0};     // reader too slow
     std::atomic<uint64_t> dropped_stale{0};     // belonged to a finished segment
     std::atomic<uint64_t> dropped_no_reader{0}; // nobody was reading the segment
+    std::atomic<uint64_t> missed{0};            // never delivered by the card (gaps in its stream time)
+    // Frames already waiting when a new one arrived, summed since the last stats event.
+    std::atomic<uint64_t> queue_waiting{0};
+    std::atomic<uint64_t> queue_samples{0};
+};
+
+// The source's real frame rate, measured on the host's monotonic clock.
+//
+// Arrival times are fitted with least squares against the card's own frame count
+// (its stream time), so arrival jitter averages out and frames the card skipped
+// don't bend the result. Those skips are counted too: a jump of more than one
+// frame in the stream time means the card never delivered the frames between.
+class FrameTiming {
+public:
+    void reset() { *this = FrameTiming(); }
+
+    // Records one arrival and returns how many frames the card skipped just before it.
+    uint64_t arrived(std::chrono::steady_clock::time_point now, IDeckLinkVideoInputFrame* frame, BMDTimeScale scale) {
+        BMDTimeValue time = 0, duration = 0;
+        const bool timed = scale > 0 && frame->GetStreamTime(&time, &duration, scale) == S_OK && duration > 0;
+
+        int64_t index = last_index_ + 1;
+        uint64_t skipped = 0;
+        if (count_ == 0) {
+            start_ = now;
+            first_time_ = time;
+            timed_ = timed;
+            index = 0;
+        } else if (timed_ && timed) {
+            index = (time - first_time_ + duration / 2) / duration;  // nearest whole frame
+            if (index > last_index_ + 1) skipped = static_cast<uint64_t>(index - last_index_ - 1);
+            if (index <= last_index_) index = last_index_ + 1;     // never step backwards
+        }
+
+        const double t = std::chrono::duration<double>(now - start_).count();
+        const double i = static_cast<double>(index);
+        ++count_;
+        sum_i_ += i;
+        sum_t_ += t;
+        sum_ii_ += i * i;
+        sum_it_ += i * t;
+        last_index_ = index;
+        span_ = t;
+        return skipped;
+    }
+
+    // Frames per second, or NaN until there are enough arrivals to fit.
+    double fps() const {
+        if (count_ < 3 || span_ <= 0) return NAN;
+        const double n = static_cast<double>(count_);
+        const double spread = n * sum_ii_ - sum_i_ * sum_i_;
+        if (spread <= 0) return NAN;
+        const double seconds_per_frame = (n * sum_it_ - sum_i_ * sum_t_) / spread;
+        return seconds_per_frame > 0 ? 1.0 / seconds_per_frame : NAN;
+    }
+
+    // How long the measurement has been running, in seconds.
+    double span() const { return span_; }
+
+private:
+    std::chrono::steady_clock::time_point start_{};
+    BMDTimeValue first_time_ = 0;
+    bool timed_ = false;
+    int64_t last_index_ = 0;
+    uint64_t count_ = 0;
+    double sum_i_ = 0, sum_t_ = 0, sum_ii_ = 0, sum_it_ = 0;
+    double span_ = 0;
+};
+
+// Holds the card's HDMI EDID with the dynamic ranges dlcap asks for. The SDK keeps a
+// changed EDID only while this interface is held; releasing it restores the card's
+// default, which leaves out HLG. Approach from nick-shaw/blackmagic-io (MIT).
+class HdmiInputEdid {
+public:
+    HdmiInputEdid() = default;
+    HdmiInputEdid(const HdmiInputEdid&) = delete;
+    HdmiInputEdid& operator=(const HdmiInputEdid&) = delete;
+    ~HdmiInputEdid() {
+        if (edid_) edid_->Release();
+    }
+
+    void apply(IDeckLink* decklink, int64_t ranges, const std::string& description) {
+        if (decklink->QueryInterface(IID_IDeckLinkHDMIInputEDID, reinterpret_cast<void**>(&edid_)) != S_OK || !edid_) {
+            edid_ = nullptr;
+            log_event("info", "this card's HDMI EDID can't be changed; it keeps its default dynamic ranges");
+            return;
+        }
+        if (edid_->SetInt(bmdDeckLinkHDMIInputEDIDDynamicRange, ranges) != S_OK || edid_->WriteToEDID() != S_OK) {
+            log_event("warning", "could not update the card's HDMI EDID; it keeps its default dynamic ranges");
+            edid_->Release();
+            edid_ = nullptr;
+            return;
+        }
+        log_event("info", "the card's HDMI EDID offers " + description);
+    }
+
+private:
+    IDeckLinkHDMIInputEDID* edid_ = nullptr;
 };
 
 class Capture final : public IDeckLinkInputCallback {
@@ -504,11 +603,16 @@ public:
     void emit_stats() {
         uint64_t segment;
         bool present;
+        double source_fps, source_span;
         {
             std::lock_guard<std::mutex> lock(state_mutex_);
             segment = announce_pending_ ? 0 : generation_;
             present = signal_present_;
+            source_fps = present ? timing_.fps() : NAN;
+            source_span = present ? timing_.span() : 0;
         }
+        const uint64_t waiting = stats_.queue_waiting.exchange(0);
+        const uint64_t samples = stats_.queue_samples.exchange(0);
         emit(Json()
                  .str("event", "stats")
                  .integer("segment", static_cast<int64_t>(segment))
@@ -519,7 +623,11 @@ public:
                  .integer("dropped_queue", static_cast<int64_t>(stats_.dropped_queue))
                  .integer("dropped_stale", static_cast<int64_t>(stats_.dropped_stale))
                  .integer("dropped_no_reader", static_cast<int64_t>(stats_.dropped_no_reader))
-                 .integer("queue", static_cast<int64_t>(queue_.size())));
+                 .integer("missed", static_cast<int64_t>(stats_.missed))
+                 .integer("queue", static_cast<int64_t>(queue_.size()))
+                 .num("queue_avg", samples ? static_cast<double>(waiting) / static_cast<double>(samples) : NAN)
+                 .num("source_fps", source_fps)
+                 .num("source_span", source_span));
     }
 
     // IUnknown: the object is owned by main(), so reference counting is nominal.
@@ -586,6 +694,7 @@ public:
             emit(Json().str("event", "signal").boolean("present", true));
         }
 
+        stats_.missed += timing_.arrived(std::chrono::steady_clock::now(), frame, format_.time_scale);
         const Colorimetry colorimetry = read_colorimetry(frame, format_);
 
         if (announce_pending_) {
@@ -601,6 +710,8 @@ public:
         const uint64_t generation = generation_;
         lock.unlock();
 
+        stats_.queue_waiting += queue_.size();
+        ++stats_.queue_samples;
         stats_.dropped_queue += queue_.push(FrameRef(frame, generation));
         return S_OK;
     }
@@ -618,6 +729,7 @@ private:
     }
 
     void begin_new_segment_locked() {
+        timing_.reset();
         ++generation_;
         active_generation_.store(generation_);
         announce_pending_ = true;
@@ -781,6 +893,7 @@ private:
 
     std::mutex state_mutex_;
     SignalFormat format_;
+    FrameTiming timing_;
     Colorimetry colorimetry_;
     uint64_t generation_ = 1;
     bool announce_pending_ = true;
@@ -922,12 +1035,48 @@ void run_command_loop(Capture& capture) {
 // main
 // ---------------------------------------------------------------------------
 
+// Parses "sdr,pq,hlg" into BMDDynamicRange bits and a readable description.
+// "default" (or an empty list) means leave the card's EDID as it is: *ranges = -1.
+bool parse_dynamic_ranges(const std::string& list, int64_t* ranges, std::string* description) {
+    *ranges = -1;
+    description->clear();
+    if (list.empty() || list == "default") return true;
+    struct Range { const char* name; int64_t bits; const char* label; };
+    static const Range known[] = {
+        {"sdr", bmdDynamicRangeSDR, "SDR"},
+        {"pq", bmdDynamicRangeHDRStaticPQ, "HDR10 (PQ)"},
+        {"hlg", bmdDynamicRangeHDRStaticHLG, "HLG"},
+    };
+    int64_t bits = 0;
+    std::vector<std::string> labels;
+    size_t start = 0;
+    while (start <= list.size()) {
+        size_t end = list.find(',', start);
+        if (end == std::string::npos) end = list.size();
+        const std::string item = list.substr(start, end - start);
+        start = end + 1;
+        const auto match = std::find_if(std::begin(known), std::end(known),
+                                        [&](const Range& r) { return item == r.name; });
+        if (match == std::end(known)) return false;
+        bits |= match->bits;
+        labels.emplace_back(match->label);
+    }
+    for (size_t i = 0; i < labels.size(); ++i)
+        *description += (i == 0 ? "" : i + 1 == labels.size() ? " and " : ", ") + labels[i];
+    *ranges = bits;
+    return true;
+}
+
 void usage() {
     std::fprintf(stderr,
-                 "usage: dlcap [--device SPEC] [--fifo-dir DIR] [--queue-depth N] [--list]\n"
+                 "usage: dlcap [--device SPEC] [--fifo-dir DIR] [--queue-depth N]\n"
+                 "             [--hdmi-dynamic-range LIST] [--list]\n"
                  "  --device SPEC       index (0), persistent id (id:1234) or part of the name\n"
                  "  --fifo-dir DIR      where segment FIFOs are created (default /run/vproc)\n"
                  "  --queue-depth N     frames buffered for a slow reader (default 2)\n"
+                 "  --hdmi-dynamic-range LIST\n"
+                 "                      what the card's HDMI EDID offers: any of sdr,pq,hlg\n"
+                 "                      (default sdr,pq,hlg), or 'default' to leave the EDID alone\n"
                  "  --list              print the devices and exit\n");
 }
 
@@ -936,19 +1085,27 @@ bool parse_options(int argc, char** argv, Options* opts) {
         {"device", required_argument, nullptr, 'd'},
         {"fifo-dir", required_argument, nullptr, 'f'},
         {"queue-depth", required_argument, nullptr, 'q'},
+        {"hdmi-dynamic-range", required_argument, nullptr, 'r'},
         {"list", no_argument, nullptr, 'l'},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0},
     };
     int c;
-    while ((c = getopt_long(argc, argv, "d:f:q:lh", long_options, nullptr)) != -1) {
+    while ((c = getopt_long(argc, argv, "d:f:q:r:lh", long_options, nullptr)) != -1) {
         switch (c) {
         case 'd': opts->device = optarg; break;
         case 'f': opts->fifo_dir = optarg; break;
         case 'q': opts->queue_depth = std::strtoul(optarg, nullptr, 10); break;
+        case 'r': opts->hdmi_dynamic_range = optarg; break;
         case 'l': opts->list_only = true; break;
         default: return false;
         }
+    }
+    int64_t ranges;
+    std::string description;
+    if (!parse_dynamic_ranges(opts->hdmi_dynamic_range, &ranges, &description)) {
+        std::fprintf(stderr, "dlcap: --hdmi-dynamic-range takes 'default' or any of sdr,pq,hlg\n");
+        return false;
     }
     return true;
 }
@@ -1029,6 +1186,13 @@ int main(int argc, char** argv) {
     }
 
     emit(Json().str("event", "device").raw("device", device_json(*device)));
+
+    // Held until dlcap exits: releasing it would put the card's default EDID back.
+    HdmiInputEdid edid;
+    int64_t ranges;
+    std::string range_names;
+    parse_dynamic_ranges(opts.hdmi_dynamic_range, &ranges, &range_names);
+    if (ranges >= 0) edid.apply(device->decklink, ranges, range_names);
 
     int status = 0;
     {

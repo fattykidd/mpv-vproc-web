@@ -9,7 +9,12 @@
 //                        pixel = yuv8 | yuv10 | yuv12 | rgb8 | rgb10
 //                        transfer = sdr | pq | hlg | lldv (SDR-flagged BT.2020, as LLDV arrives)
 // MOCK_FRAME_INTERVAL_MS delay between frames (default 2)
+// MOCK_SKIP_EVERY        every Nth frame is never delivered: the stream time jumps over it
 // MOCK_DEVICES           comma-separated device names
+// MOCK_NO_EDID           the card offers no IDeckLinkHDMIInputEDID
+// MOCK_EDID_FAIL         WriteToEDID fails
+//
+// An EDID write is reported on stderr as "mock-edid: dynamic range <bits>".
 //
 // Every frame starts with a 32-byte header the tests use to check alignment:
 //   "DLCMOCK1", u64 step, u64 frame-in-step, u32 pixel format, u32 width.
@@ -18,6 +23,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
@@ -29,6 +35,7 @@ const REFIID IID_IDeckLinkInput = {{1}};
 const REFIID IID_IDeckLinkProfileAttributes = {{2}};
 const REFIID IID_IDeckLinkVideoFrameMetadataExtensions = {{3}};
 const REFIID IID_IDeckLinkVideoBuffer = {{4}};
+const REFIID IID_IDeckLinkHDMIInputEDID = {{5}};
 
 namespace {
 
@@ -161,8 +168,10 @@ std::atomic<int> g_live_frames{0};
 
 class Frame : public RefCounted<IDeckLinkVideoInputFrame> {
 public:
-    Frame(long w, long h, BMDPixelFormat pf, BMDFrameFlags flags, const Step& step, uint64_t step_index, uint64_t n)
-        : w_(w), h_(h), pf_(pf), flags_(flags), step_(step), bytes_(row_bytes_for(pf, w) * h) {
+    Frame(long w, long h, BMDPixelFormat pf, BMDFrameFlags flags, const Step& step, uint64_t step_index, uint64_t n,
+          const ModeInfo* mode, uint64_t stream_frame)
+        : w_(w), h_(h), pf_(pf), flags_(flags), step_(step), mode_(mode), stream_frame_(stream_frame),
+          bytes_(row_bytes_for(pf, w) * h) {
         ++g_live_frames;
         std::memcpy(bytes_.data(), "DLCMOCK1", 8);
         std::memcpy(bytes_.data() + 8, &step_index, 8);
@@ -194,12 +203,21 @@ public:
 #if MOCK_DECKLINK_API_VERSION < 0x0e030000
     HRESULT GetBytes(void** b) override { *b = bytes_.data(); return S_OK; }
 #endif
+    // Like the driver: time since the streams started, in the caller's time scale.
+    HRESULT GetStreamTime(BMDTimeValue* time, BMDTimeValue* duration, BMDTimeScale scale) override {
+        if (!scale) return E_FAIL;
+        *duration = mode_->duration * scale / mode_->scale;
+        *time = static_cast<BMDTimeValue>(stream_frame_) * *duration;
+        return S_OK;
+    }
 
 private:
     long w_, h_;
     BMDPixelFormat pf_;
     BMDFrameFlags flags_;
     Step step_;
+    const ModeInfo* mode_;
+    uint64_t stream_frame_;
     std::vector<uint8_t> bytes_;
 };
 
@@ -246,6 +264,8 @@ public:
     Input() : script_(parse_script(std::getenv("MOCK_DECKLINK_SCRIPT"))) {
         const char* iv = std::getenv("MOCK_FRAME_INTERVAL_MS");
         interval_ = std::chrono::milliseconds(iv ? std::atoi(iv) : 2);
+        const char* skip = std::getenv("MOCK_SKIP_EVERY");
+        skip_every_ = skip ? std::strtoull(skip, nullptr, 10) : 0;
     }
     ~Input() override { StopStreams(); }
 
@@ -264,6 +284,7 @@ public:
     HRESULT DisableVideoInput() override { return S_OK; }
     HRESULT StartStreams() override {
         paused_ = false;
+        stream_frame_ = 0;
         if (!running_.exchange(true)) thread_ = std::thread(&Input::run, this);
         return S_OK;
     }
@@ -320,7 +341,10 @@ private:
 
                 const BMDFrameFlags fflags =
                     step.signal ? (step.eotf ? bmdFrameContainsHDRMetadata : 0) : bmdFrameHasNoInputSource;
-                Frame* frame = new Frame(mode->width, mode->height, pf, fflags, step, step_index, n);
+                ++delivered_;
+                if (skip_every_ && delivered_ % skip_every_ == 0) ++stream_frame_;  // the card loses one
+                Frame* frame = new Frame(mode->width, mode->height, pf, fflags, step, step_index, n, mode,
+                                         stream_frame_++);
                 cb->VideoInputFrameArrived(frame, nullptr);
                 frame->Release();
             }
@@ -337,6 +361,31 @@ private:
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
     std::thread thread_;
+    uint64_t skip_every_ = 0;
+    uint64_t delivered_ = 0;
+    std::atomic<uint64_t> stream_frame_{0};
+};
+
+class HdmiInputEdid : public RefCounted<IDeckLinkHDMIInputEDID> {
+public:
+    HRESULT SetInt(BMDDeckLinkHDMIInputEDIDID id, int64_t value) override {
+        if (id != bmdDeckLinkHDMIInputEDIDDynamicRange) return E_FAIL;
+        ranges_ = value;
+        return S_OK;
+    }
+    HRESULT GetInt(BMDDeckLinkHDMIInputEDIDID id, int64_t* value) override {
+        if (id != bmdDeckLinkHDMIInputEDIDDynamicRange) return E_FAIL;
+        *value = ranges_;
+        return S_OK;
+    }
+    HRESULT WriteToEDID() override {
+        if (std::getenv("MOCK_EDID_FAIL")) return E_FAIL;
+        std::fprintf(stderr, "mock-edid: dynamic range %lld\n", static_cast<long long>(ranges_));
+        return S_OK;
+    }
+
+private:
+    int64_t ranges_ = bmdDynamicRangeSDR | bmdDynamicRangeHDRStaticPQ;
 };
 
 class Attributes : public RefCounted<IDeckLinkProfileAttributes> {
@@ -358,6 +407,10 @@ public:
     Device(std::string name, int64_t id) : name_(std::move(name)), id_(id) {}
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
         if (iid == IID_IDeckLinkInput) { *ppv = static_cast<IDeckLinkInput*>(new Input()); return S_OK; }
+        if (iid == IID_IDeckLinkHDMIInputEDID && !std::getenv("MOCK_NO_EDID")) {
+            *ppv = static_cast<IDeckLinkHDMIInputEDID*>(new HdmiInputEdid());
+            return S_OK;
+        }
         if (iid == IID_IDeckLinkProfileAttributes) {
             *ppv = static_cast<IDeckLinkProfileAttributes*>(new Attributes(id_));
             return S_OK;
