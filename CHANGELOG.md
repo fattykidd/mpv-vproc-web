@@ -10,6 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-11-22
+
 ### Added
 
 - **Lip-sync settings take effect straight away.** Saving the offset, URLs or HTTP method under System settings
@@ -119,7 +121,8 @@ The first public release.
 - A hardware-free simulation (`compose.sim.yml`) for trying it without a capture card.
 - Container images built and published on GitHub.
 
-[Unreleased]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/fattykidd/mpv-vproc-web/compare/v0.2.1...v0.2.2
