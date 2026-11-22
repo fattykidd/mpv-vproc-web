@@ -43,8 +43,7 @@ processor is for.
 
 **Dynamic tone mapping** means measuring the brightness of every frame and adapting the curve scene by scene,
 rather than using one curve for the whole film. A dark cave scene then isn't treated like a sunlit desert.
-That's what dedicated processors like madVR Envy and Lumagen are known for, and what mpv-vproc-web does
-with **Dynamic peak detection**.
+mpv-vproc-web does this with **Dynamic peak detection**.
 
 **Scaling** changes the picture's resolution to your display's: 1080p up to 4K, or 4K down to 1080p. Good
 scaling keeps detail sharp without halos or jagged edges.
@@ -273,7 +272,7 @@ When CfL is on, it replaces the chroma upscaler. It runs on every frame, so afte
 at your highest frame rate for a few minutes and watch **Dropped frames**. If they start to rise, use
 `cfl-lite` or turn it off. It has no effect on RGB sources (PCs, consoles), which have no reduced colour detail.
 
-The shaders are by João Chrisóstomo (Artoriuz), MIT licensed, and ship with vproc (see `shaders/README.md`).
+The shaders are open source (MIT) and ship with vproc; `THIRD_PARTY_NOTICES.md` credits their author.
 
 ### The other scaling options
 

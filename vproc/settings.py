@@ -121,7 +121,7 @@ SCHEMA: tuple[Option, ...] = (
            about=("Used to place black, so shadow detail isn't crushed on displays with lifted blacks. Use the "
                   "measured native contrast; inf suits OLED and auto trusts the display.")),
     Option("hdr-compute-peak", "Dynamic peak detection", "Tone mapping", "choice",
-           "Measure every frame's brightness (madVR-style) instead of trusting metadata.",
+           "Measure every frame's brightness instead of trusting metadata.",
            choices=("auto", "yes", "no"),
            about=("Measures how bright each frame really is and tone-maps for that frame, instead of using one "
                   "fixed value from the metadata for the whole film. yes is recommended.")),
@@ -198,8 +198,8 @@ SCHEMA: tuple[Option, ...] = (
                   "brightness detail, so red and blue edges, text and credits come out sharper than any "
                   "chroma upscaler can make them. When on, it replaces the chroma upscaler. cfl-lite is "
                   "quicker and nearly as good. It costs GPU time on every frame: if Dropped frames start "
-                  "rising, use cfl-lite or turn it off. No effect on RGB sources. Shader by João "
-                  "Chrisóstomo (Artoriuz), MIT licensed.")),
+                  "rising, use cfl-lite or turn it off. No effect on RGB sources. Open-source shader (MIT), "
+                  "credited in THIRD_PARTY_NOTICES.md.")),
     Option("dscale", "Downscaler", "Scaling", "choice", choices=_SCALERS,
            help="How the picture is shrunk when the source is larger than the display.",
            about="mitchell and hermite are soft and free of artefacts; lanczos is sharper but can ring."),

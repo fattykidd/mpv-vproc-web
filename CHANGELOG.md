@@ -10,6 +10,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Documentation
+
+- `ROADMAP.md` lists what's planned next.
+- Credits for outside projects are gathered in `THIRD_PARTY_NOTICES.md`.
+
 ## [0.2.5] - 2026-11-22
 
 ### Added
@@ -25,7 +30,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   shows it, e.g. `Dolby Vision (LLDV) · P3`.
 - **Chroma shader** picture setting: Chroma from Luma (CfL) prediction rebuilds the colour detail of 4:2:2
   sources from their brightness detail, for sharper colour edges than any chroma upscaler. Choose `cfl` or the
-  lighter `cfl-lite`. Shaders by João Chrisóstomo (Artoriuz), MIT licensed, shipped in `shaders/`.
+  lighter `cfl-lite`. The shaders are open source (MIT), ship in `shaders/` and are credited in
+  `THIRD_PARTY_NOTICES.md`.
 
 ## [0.2.4] - 2026-11-22
 

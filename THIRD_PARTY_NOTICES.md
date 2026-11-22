@@ -57,6 +57,16 @@ Unfolded Circle, Remote Two and Remote 3 are trademarks of Unfolded Circle ApS. 
 follows the [Unfolded Circle Integration API](https://github.com/unfoldedcircle/core-api). This project is
 not affiliated with or endorsed by Unfolded Circle.
 
+## Acknowledgements
+
+Some of vproc's approaches were worked out with the help of these open-source projects. No code from them is
+included unless listed above.
+
+- [blackmagic-io](https://github.com/nick-shaw/blackmagic-io) (MIT): setting the capture card's HDMI EDID to
+  offer HLG.
+- [VideoProcessor](https://github.com/billslack2/videoprocessor) and
+  [Unplugged](https://github.com/spedagadi/unplugged-mpc-hc): ideas on capture timing and clock drift.
+
 ## NVIDIA
 
 At runtime the NVIDIA Container Toolkit makes the host's NVIDIA driver libraries available inside the

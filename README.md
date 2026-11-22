@@ -1,7 +1,7 @@
 # mpv-vproc-web
 
 A headless HDR video processor built from a DeckLink capture card (Blackmagic Design), mpv and libplacebo.
-It takes HDMI in, tone-maps HDR10/HLG in a style like madVR's (with dynamic per-frame peak detection), scales
+It takes HDMI in, tone-maps HDR10/HLG with dynamic per-frame peak detection, scales
 with libplacebo's high-quality filters and drives the display directly through Vulkan. No desktop is needed.
 You control it from a web page, its HTTP API, or an Unfolded Circle remote.
 
@@ -49,7 +49,8 @@ docker compose exec vproc python3 -m vproc.doctor
 
 This downloads the ready-built image from `ghcr.io/fattykidd/mpv-vproc-web`. To stay on a particular
 release instead of the newest, set `VPROC_VERSION` (for example `0.1.0`) in `.env`. To update later:
-`docker compose pull && docker compose up -d`. What changed in each release is in `CHANGELOG.md`.
+`docker compose pull && docker compose up -d`. What changed in each release is in `CHANGELOG.md`, and
+what's planned is in `ROADMAP.md`.
 
 Then open `http://<host>:8000`. The container uses the host's network directly (so an Unfolded Circle
 Remote can find it); if port 8000 is taken on your server, set `VPROC_PORT` in `.env`.

@@ -509,7 +509,7 @@ private:
 
 // Holds the card's HDMI EDID with the dynamic ranges dlcap asks for. The SDK keeps a
 // changed EDID only while this interface is held; releasing it restores the card's
-// default, which leaves out HLG. Approach from nick-shaw/blackmagic-io (MIT).
+// default, which leaves out HLG.
 class HdmiInputEdid {
 public:
     HdmiInputEdid() = default;

@@ -3,8 +3,6 @@
 # GitHub's release build finds out. Enable once per clone:
 #
 #   git config core.hooksPath git-hooks
-#
-# Same idea as the Unfolded Circle integration template's pre-push hook.
 
 set -euo pipefail
 
