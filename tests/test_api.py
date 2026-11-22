@@ -122,6 +122,13 @@ def test_service_settings_page(tmp_path, monkeypatch):
         assert bad.status_code == 400 and "VPROC_LLDV_PEAK" in bad.json()["detail"]
         assert client.put("/api/service-settings", json={"changes": {"API_TOKEN": "x"}}).status_code == 400
 
+        # Lip-sync settings take effect when saved: nothing waits for a restart.
+        r = client.put("/api/service-settings", json={"changes": {"LLDV": None, "LLDV_PEAK": None, "LIPSYNC_OFFSET": "325"}})
+        fields = {f["key"]: f for f in r.json()["fields"]}
+        assert fields["LIPSYNC_OFFSET"]["live"] and fields["LIPSYNC_OFFSET"]["running"] == "325"
+        assert not r.json()["restart_needed"]
+        assert client.get("/api/status").json()["lipsync"]["offset_ms"] == 325
+
         assert client.post("/api/service-settings/apply").json() == {"restarting": True}
         deadline = time.monotonic() + 3
         while not restarts and time.monotonic() < deadline:

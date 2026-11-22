@@ -2,7 +2,9 @@
 
 The .env file stays the starting point. A value saved in the UI is kept in
 /data/service.json and takes over from .env when vproc (re)starts; resetting it
-returns to the .env value. Settings Docker needs before the container starts
+returns to the .env value. Most settings take effect when vproc restarts; the
+ones marked live (lip sync) take effect as soon as they are saved. Settings
+Docker needs before the container starts
 (group ids, device paths, ports, the image version) can only live in .env, and
 the UI lists them as such.
 
@@ -38,6 +40,7 @@ class Field:
     choices: tuple[str, ...] = ()
     placeholder: str = ""
     caution: str = ""  # shown before applying a change that can take the picture away
+    live: bool = False  # takes effect when saved, without a restart
 
 
 FIELDS: tuple[Field, ...] = (
@@ -71,12 +74,12 @@ FIELDS: tuple[Field, ...] = (
           kind="number", placeholder="1000"),
     Field("LIPSYNC_URLS", "lipsync_urls", "Lip-sync URLs", "Lip sync",
           "Where to send the audio delay, comma-separated, with {delay_ms} where the number goes.",
-          placeholder="http://192.168.1.20:8080/api/atlas/input/1/lipsync/{delay_ms}"),
+          placeholder="http://192.168.1.20:8080/api/atlas/input/1/lipsync/{delay_ms}", live=True),
     Field("LIPSYNC_OFFSET", "lipsync_offset", "Lip-sync offset (ms)", "Lip sync",
           "Added to vproc's own delay for the display's processing. Find it with an A/V sync test video.",
-          kind="number"),
+          kind="number", live=True),
     Field("LIPSYNC_METHOD", "lipsync_method", "Lip-sync HTTP method", "Lip sync",
-          "How the URLs are called.", kind="choice", choices=("POST", "PUT", "GET")),
+          "How the URLs are called.", kind="choice", choices=("POST", "PUT", "GET"), live=True),
     Field("LOG_LEVEL", "log_level", "Log level", "Logging",
           "How much vproc writes to its log.", kind="choice", choices=("debug", "info", "warning", "error")),
     Field("MPV_LOG_LEVEL", "mpv_log_level", "mpv log level", "Logging",
@@ -86,6 +89,7 @@ FIELDS: tuple[Field, ...] = (
           caution="A wrong option can stop the picture from starting."),
 )
 BY_KEY = {f.key: f for f in FIELDS}
+LIVE = tuple(f for f in FIELDS if f.live)
 
 # Only .env can set these: Docker uses them before the container starts.
 HOST_ONLY = (
@@ -155,7 +159,7 @@ class ServiceSettings:
             saved = self.saved.get(f.key)
             fields.append({
                 "key": f.key, "label": f.label, "group": f.group, "help": f.help, "kind": f.kind,
-                "choices": list(f.choices), "placeholder": f.placeholder, "caution": f.caution,
+                "choices": list(f.choices), "placeholder": f.placeholder, "caution": f.caution, "live": f.live,
                 "value": saved if saved is not None else env_value if env_value is not None else text_of(getattr(defaults, f.attr)),
                 "source": "saved" if saved is not None else "env" if env_value is not None else "default",
                 "env_value": env_value,
@@ -167,7 +171,8 @@ class ServiceSettings:
 
     @staticmethod
     def _effective(config: Config) -> dict[str, str]:
-        return {f.key: text_of(getattr(config, f.attr)) for f in FIELDS}
+        """The values that need a restart to change."""
+        return {f.key: text_of(getattr(config, f.attr)) for f in FIELDS if not f.live}
 
     def _load(self) -> dict[str, str]:
         try:

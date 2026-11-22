@@ -161,7 +161,8 @@ reaches mpv.
 All settings are environment variables in `.env`; `.env.example` documents each one. Most of vproc's own
 settings (display, input, lip sync, logging) can also be changed in the web page under **System settings**: a
 value set there is saved in vproc's data volume and used instead of `.env`, **Reset** goes back to `.env`, and
-**Apply** restarts vproc inside the container in a few seconds. Settings Docker needs before the container starts
+**Apply** restarts vproc inside the container in a few seconds. The lip-sync settings need no **Apply**: saving one
+sends the new audio delay straight away. Settings Docker needs before the container starts
 (group ids, device paths, ports, the image version, the API token) can only be set in `.env`.
 
 The ones you're most likely to touch:

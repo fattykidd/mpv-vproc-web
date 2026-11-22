@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import secrets
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Literal
@@ -16,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .config import Config, ConfigError
 from .mpv import MpvError
 from .processor import Processor
-from .service_settings import ServiceSettings
+from .service_settings import LIVE, ServiceSettings
 from .settings import SCHEMA, PresetStore
 
 
@@ -211,10 +212,16 @@ def create_app(
 
     @app.put("/api/service-settings", dependencies=api)
     async def update_service_settings(body: ServiceSettingsUpdate) -> dict[str, Any]:
+        nonlocal config
         try:
             settings.update(body.changes)
         except ConfigError as exc:
             raise HTTPException(400, str(exc)) from None
+        saved, _ = settings.config()
+        live = {f.attr: getattr(saved, f.attr) for f in LIVE if getattr(saved, f.attr) != getattr(config, f.attr)}
+        if live:
+            config = dataclasses.replace(config, **live)
+            await processor.update_lipsync(config.lipsync_urls, config.lipsync_offset, config.lipsync_method)
         return {**settings.describe(config), "can_restart": request_restart is not None}
 
     @app.post("/api/service-settings/apply", dependencies=api)

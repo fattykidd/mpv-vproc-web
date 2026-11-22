@@ -4,7 +4,8 @@ vproc delays the picture by about a frame or two, more at 24 fps than at 60, so
 audio that is in sync at one frame rate drifts out at another. When a new signal
 has played long enough for its delay to settle, the delay (plus a fixed offset for
 the display's own processing) is sent to each configured URL, e.g. an AudioControl
-Hyperion's per-input lip-sync endpoint:
+Hyperion's per-input lip-sync endpoint. Changing the URLs or the offset sends the
+new delay straight away; no restart is needed.
 
     VPROC_LIPSYNC_URLS=http://hyperion.local:8080/api/atlas/input/1/lipsync/{delay_ms}
     VPROC_LIPSYNC_OFFSET=40
@@ -34,6 +35,7 @@ class LipSync:
         self.offset_ms = offset_ms
         self.method = method
         self.sent_ms: int | None = None  # last delay every URL accepted
+        self.video_ms: float | None = None  # video latency the last delay was worked out from
         self.error: str | None = None
 
     @property
@@ -44,8 +46,15 @@ class LipSync:
         """Audio delay for a measured video latency; never negative."""
         return max(0, rounded(video_latency_ms) + self.offset_ms)
 
+    def configure(self, urls: tuple[str, ...], offset_ms: int, method: str) -> None:
+        """Takes new settings. A different set of URLs hasn't been sent anything yet."""
+        if (urls, method) != (self.urls, self.method):
+            self.sent_ms, self.error = None, None
+        self.urls, self.offset_ms, self.method = urls, offset_ms, method
+
     async def apply(self, video_latency_ms: float) -> bool:
         """Sends the delay if it differs from the last one sent. True when something was sent."""
+        self.video_ms = video_latency_ms
         delay = self.target_for(video_latency_ms)
         if delay == self.sent_ms and self.error is None:
             return False

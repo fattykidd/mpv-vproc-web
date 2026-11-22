@@ -98,3 +98,18 @@ def test_settings():
         Config.from_env({"VPROC_LIPSYNC_URLS": "http://a/lipsync"})  # no placeholder
     with pytest.raises(ConfigError):
         Config.from_env({"VPROC_LIPSYNC_METHOD": "DELETE"})
+
+
+def test_new_settings_resend_the_delay(avp):
+    sync = LipSync((avp.url("/a/{delay_ms}"),), offset_ms=40)
+
+    async def scenario():
+        assert await sync.apply(65)
+        sync.configure(sync.urls, 300, "POST")  # same URL, new offset
+        assert await sync.apply(sync.video_ms)
+        sync.configure((avp.url("/b/{delay_ms}"),), 300, "PUT")  # a new URL hasn't had anything yet
+        assert await sync.apply(sync.video_ms)
+
+    asyncio.run(scenario())
+    assert avp.requests == [("POST", "/a/105"), ("POST", "/a/365"), ("PUT", "/b/365")]
+    assert sync.status()["offset_ms"] == 300

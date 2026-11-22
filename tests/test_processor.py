@@ -485,6 +485,11 @@ def test_sends_the_settled_delay_once_per_signal(tmp_path, monkeypatch):
                 assert method == "POST" and delay % 5 == 0
                 assert frame + refresh + 40 - 5 <= delay <= 3 * frame + refresh + 40 + 5
                 assert h.processor.status()["lipsync"]["delay_ms"] == delay
+
+                # A new offset is sent at once for the signal already playing.
+                await h.processor.update_lipsync(h.processor.lipsync.urls, 300, "POST")
+                assert avp.requests[1] == ("POST", path.rsplit("/", 1)[0] + f"/{delay - 40 + 300}")
+                assert h.processor.status()["lipsync"]["offset_ms"] == 300
             finally:
                 await h.processor.stop()
 

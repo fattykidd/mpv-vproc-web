@@ -486,7 +486,7 @@ function renderService(data) {
     el("h3", { textContent: group }),
     ...data.fields.filter((f) => f.group === group).map((field) => {
       const save = (value) => run(async () => renderService(
-        await api("PUT", "/api/service-settings", { changes: { [field.key]: value } })), "Saved")
+        await api("PUT", "/api/service-settings", { changes: { [field.key]: value } })), field.live ? "Saved and applied" : "Saved")
         .then(() => renderService(state.service));  // on error, put the field back
       const reset = el("button", { type: "button", className: "ghost small reset", textContent: "Reset",
         title: field.env_value != null ? `Back to .env: ${field.env_value}` : "Back to the default" });

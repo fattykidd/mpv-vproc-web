@@ -709,7 +709,15 @@ class Processor:
         settled = round(sum(self._lipsync_readings) / len(self._lipsync_readings))
         asyncio.create_task(self._apply_lipsync(settled), name="lipsync")
 
-    async def _apply_lipsync(self, latency_ms: int) -> None:
+    async def update_lipsync(self, urls: tuple[str, ...], offset_ms: int, method: str) -> None:
+        """Takes new lip-sync settings and, if the playing signal's delay is already known, resends it."""
+        self.lipsync.configure(urls, offset_ms, method)
+        if self._lipsync_done and self.lipsync.enabled and self.lipsync.video_ms is not None:
+            await self._apply_lipsync(self.lipsync.video_ms)
+        else:
+            self._notify()
+
+    async def _apply_lipsync(self, latency_ms: float) -> None:
         if await self.lipsync.apply(latency_ms) and self.lipsync.error:
             self._error("lipsync", f"could not set the audio delay: {self.lipsync.error}")
         self._notify()
