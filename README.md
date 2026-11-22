@@ -49,7 +49,7 @@ docker compose exec vproc python3 -m vproc.doctor
 
 This downloads the ready-built image from `ghcr.io/fattykidd/mpv-vproc-web`. To stay on a particular
 release instead of the newest, set `VPROC_VERSION` (for example `0.1.0`) in `.env`. To update later:
-`docker compose pull && docker compose up -d`.
+`docker compose pull && docker compose up -d`. What changed in each release is in `CHANGELOG.md`.
 
 Then open `http://<host>:8000`. The container uses the host's network directly (so an Unfolded Circle
 Remote can find it); if port 8000 is taken on your server, set `VPROC_PORT` in `.env`.
@@ -232,9 +232,12 @@ Build with `-DMOCK_DECKLINK_API_VERSION=0x0e030000` to test the SDK 14.3+ frame 
 The version lives in `vproc/__init__.py` (the example in `.env.example` follows it). Pushing a tag `vX.Y.Z` builds
 the image and creates the GitHub release; the build refuses a tag that doesn't match the version.
 
+Note each change under `## [Unreleased]` in `CHANGELOG.md` as you make it. `scripts/release.sh` won't release
+without notes there; it turns them into the new version's section, and the GitHub release shows them.
+
 ```sh
 git config core.hooksPath git-hooks   # once per clone: checks the version before a tag is pushed
-scripts/release.sh 0.3.0              # sets the version, commits "Version 0.3.0", tags v0.3.0
+scripts/release.sh 0.3.0              # sets the version and changelog, commits "Version 0.3.0", tags v0.3.0
 git push origin main && git push origin v0.3.0
 ```
 

@@ -132,6 +132,12 @@ jobs:
             -e "s|@IMAGE@|${IMAGE}|g" -e "s|@VERSION@|${version}|g" -e "s|@DIGEST@|${DIGEST}|g" \
             -e "s|@MPV@|$(arg MPV_VERSION)|g" -e "s|@LIBPLACEBO@|$(arg LIBPLACEBO_VERSION)|g" \
             -e "s|@FFMPEG@|$(arg FFMPEG_VERSION)|g" notes.md
+          # This version's section of CHANGELOG.md goes first.
+          awk -v heading="## [${version}]" 'index($0, heading) == 1 {on=1; next} on && /^## \[/ {exit} on && /^\[.+\]: / {exit} on' \
+              CHANGELOG.md > changes.md
+          if [[ -s changes.md ]]; then
+            { echo "## What's new"; cat changes.md; echo; cat notes.md; } > notes.tmp && mv notes.tmp notes.md
+          fi
           cat notes.md
 
       - name: Create the GitHub release
